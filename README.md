@@ -8,6 +8,7 @@ The original ShonenZ0.1.5 APK was inspected with aapt/JADX. Its source links wer
 unavailable. This project therefore uses pinned, licensed ShonenX source; it is
 not an exact recovery of the original APK and is not a binary reskin.
 
+- [Original APK inspection](docs/shonenz/APK_ANALYSIS.md)
 - [Build, sign and back up the key](docs/shonenz/BUILD.md)
 - [Changes](docs/shonenz/CHANGELOG.md)
 - [Verification and limitations](docs/shonenz/VERIFICATION.md)

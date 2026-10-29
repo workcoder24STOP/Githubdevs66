@@ -87,7 +87,7 @@ class _BackupSettingsScreenState extends ConsumerState<BackupSettingsScreen> {
         await SharePlus.instance.share(
           ShareParams(
             files: [XFile(tempFile.path)],
-            text: 'ShonenX Backup ($fileName)',
+            text: 'ShonenZ+ Backup ($fileName)',
           ),
         );
         return;

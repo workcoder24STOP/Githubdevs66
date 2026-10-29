@@ -56,7 +56,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     setState(() => _isProcessing = true);
     try {
       final success = await securityService.authenticateBiometrics(
-        reason: 'Authenticate to unlock ShonenX',
+        reason: 'Authenticate to unlock ShonenZ+',
       );
 
       if (success && mounted) {

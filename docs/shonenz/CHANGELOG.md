@@ -38,3 +38,6 @@
   retain the existing explicit permission flow.
 - Removed the upstream checked-in upload keystore; only the new private task key
   is used for release signing.
+
+- Complete Android-facing ShonenZ+ labels, including onboarding and security.
+- Repair local metrics comparisons against stored media-type strings.

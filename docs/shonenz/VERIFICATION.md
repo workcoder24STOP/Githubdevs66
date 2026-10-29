@@ -28,8 +28,9 @@ Catalog enumeration is not evidence that every extension works.
   real catalog with exact64-bit IDs; rejecting truncated protobuf; Unicode/season
   matching; natural imported page ordering.
 - Isar schema generation completed.
-- Focused application analysis completed without errors; the full application
-  has five inherited informational lints in tracker display/metrics code.
+- Full application analysis (`flutter analyze --no-pub lib`) completed with
+  **no issues** after repairing the inherited string/enum metrics comparisons
+  and updating deprecated tracker color calls.
 - Browser joiner verified in the shared cloud Chromium Preview with networking
   disabled. It reconstructed a verification fixture byte-for-byte, rejected
   missing/corrupted pieces, and succeeded with Web Crypto disabled. Six SHA-256

@@ -292,7 +292,7 @@ class _TrackingSettingsScreenState
 
                           Text(
                             'Normally you need to manually link anime and manga to your trackers. '
-                            'With Auto-Link Trackers enabled, ShonenX automatically creates mappings with your active trackers whenever matching IDs are found.',
+                            'With Auto-Link Trackers enabled, ShonenZ+ automatically creates mappings with your active trackers whenever matching IDs are found.',
                             style: textTheme.bodyMedium,
                           ),
 
