@@ -38,12 +38,14 @@ archives. The key is generated as RSA4096 with a random password stored in a
 private directory. For this task that directory is
 `$HOME/.local/share/shonenz-signing/` (0700; key/password 0600).
 
-The release package is `io.github.workcoder24stop.shonenzplus`, version0.2.0 (1).
+The release package is `io.github.workcoder24stop.shonenzplus`, version0.2.0 (base version code1; ARM64 split2001, x64 split4001).
 The launcher is ShonenZ+. It installs alongside ShonenZ and cannot update the
 original app because both application ID and signature differ.
 
 Build one ABI at a time on small machines. Gradle is constrained to one worker
-and 1.5GiB heap. The initial simultaneous ARM64/x64 build exhausted this sandbox.
+and 1.5GiB heap. The initial simultaneous ARM64/x64 build with the original
+Gradle settings exhausted this sandbox. With the current one-worker settings,
+the final combined build also succeeded using `CARGO_BUILD_JOBS=2`.
 
 ```sh
 flutter build apk --release --split-per-abi --target-platform android-arm64

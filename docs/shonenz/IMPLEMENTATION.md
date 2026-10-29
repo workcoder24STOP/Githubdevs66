@@ -4,7 +4,7 @@ The connected repository was empty. The original APK is Flutter AOT, package
 io.github.heneverstopslord.shonenz, v0.1.5 (6), min24/target36, ARM64.
 JADX 1.5.3 extracted manifest/resources; aapt36 inspected package/permissions.
 Its ShonenZ source URLs returned 404. This is a source-level GPL ShonenX fork,
-not an exact recovery of proprietary Dart AOT source or a binary reskin.
+not an exact recovery of the original Dart source or a binary reskin.
 
 Foundation: https://github.com/roshancodespace/shonenx at
  a0dd5fb5afe07dc2c4109c96be31a53eee5da228.

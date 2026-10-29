@@ -34,16 +34,19 @@ Catalog enumeration is not evidence that every extension works.
 - Browser joiner verified in the shared cloud Chromium Preview with networking
   disabled. It reconstructed a verification fixture byte-for-byte, rejected
   missing/corrupted pieces, and succeeded with Web Crypto disabled. Six SHA-256
-  fallback vectors passed. Final APK reconstruction is checked separately at packaging.
+  fallback vectors passed. The final43503123byte ARM64 APK was also reconstructed offline in shared
+  Chromium and its downloaded SHA-256 matched the signed build exactly.
 - Original APK inspected with aapt36 and JADX1.5.3. Exact original source was
   unavailable (its embedded ShonenZ repository URLs returned404).
 
 ## Known limitations and remaining acceptance work
 
-- Android installation/startup and physical ARM64 compatibility require a working
-  device. The first software emulator attempt crashed with exit139 before boot;
-  this sandbox has no `/dev/kvm`. Final build/device results are recorded in the
-  delivered release report, rather than inferred from these source checks.
+- Clean x64 installation passed on AndroidAPI30. Startup/reader acceptance is
+  **blocked**: the first software emulator crashed with exit139; subsequent1GiB
+  and2GiB configurations booted but showed Android system/SystemUI ANR dialogs.
+  ADB UI snapshots timed out, including after server restart. The app launch
+  command was accepted; usable startup was not established. No `/dev/kvm` is
+  available. Physical ARM64 compatibility remains unverified. See RELEASE.md.
 - No extended mpv playback, codec matrix, seek/audio-sync, battery, or memory-soak
   verification was performed. Existing hardware decoding and codec handling are
   preserved; local position and subtitle association were repaired. This is not
@@ -74,3 +77,11 @@ Catalog enumeration is not evidence that every extension works.
 - Extension failures are caught at the adapter/runtime boundary. Dynamically
   loaded Android extension native code is not a separate security sandbox; a
   fatal native failure may still terminate the process.
+
+- Matching fallback currently runs during automatic matching across up to six
+  prioritized sources. Explicit/saved mappings require manual correction if their
+  source later fails; missing individual chapters do not trigger silent remapping.
+  Query limits/timeouts are bounded defaults in code, not a new settings panel.
+- Original history models document millisecond playback units, while an inherited
+  migration writes seconds. Exact legacy playback-history migration remains an
+  open compatibility issue; new offline playback uses its explicit millisecond field.
