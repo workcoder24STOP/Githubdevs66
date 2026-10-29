@@ -1,7 +1,7 @@
 name: shonenx
 description: "Minimal yet feature-rich Anime/Manga Client"
 publish_to: "none"
-version: 2.1.5+4
+version: 0.2.0+1
 
 environment:
   sdk: ^3.9.2
@@ -79,6 +79,8 @@ dependencies:
   rhttp: ^0.18.0
   intl: ^0.20.2
   local_auth: ^3.0.1
+  cupertino_icons: ^1.0.8
+  archive: ^4.0.9
   crypto: ^3.0.3
   flutter_device_apps: ^0.8.1
   better_player_plus: ^1.0.8
@@ -143,6 +145,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/runtime/anymex_runtime_host.apk
 
 inno_bundle:
   id: 17cd6e7b-cedc-43b7-86b1-4de6ab23dd4d

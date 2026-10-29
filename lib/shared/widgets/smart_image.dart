@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -99,6 +100,16 @@ class SmartImage extends StatelessWidget {
     }
 
     final raw = imageUrl!.trim();
+
+    if (raw.startsWith('/') || raw.startsWith('file://')) {
+      final file = raw.startsWith('file://') ? File.fromUri(Uri.parse(raw)) : File(raw);
+      final provider = ResizeImage.resizeIfNeeded(memCacheWidth, memCacheHeight, FileImage(file));
+      return _applyEffects(imageBuilder?.call(context, provider) ?? Image(
+        image: provider, width: safeWidth, height: safeHeight, fit: fit,
+        alignment: alignment, filterQuality: filterQuality,
+        errorBuilder: (_, __, ___) => fallback,
+      ));
+    }
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       final cleanUrl = raw.split('#').first;

@@ -1,4 +1,12 @@
+import 'package:shonenx/features/offline/catalog_snapshot.dart';
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'package:shonenx/features/offline/manga_downloader.dart';
+import 'package:shonenx/shared/models/unified_media.dart';
+import 'package:shonenx/source_engine/models/source_info.dart';
+import 'package:shonenx/source_engine/source_engine_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shonenx/core/utils/http_x.dart';
@@ -30,11 +38,32 @@ final downloadManagerProvider =
 
 class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
   late bm.ByteMe _manager;
+  final Set<String> _starting = {};
+  final Map<int, MangaDownloader> _mangaJobs = {};
+  int _runningManga = 0;
   final Set<String> _trackedJobs = {};
   final Map<int, int> _lastNotifiedPct = {};
   final Map<int, DateTime> _lastDbWriteTime = {};
   final Map<int, StreamSubscription> _statusSubs = {};
   final Map<int, StreamSubscription> _progressSubs = {};
+
+  static const _foreground = MethodChannel('shonenz/downloads');
+  Future<void> _syncForeground() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final active = (await repo.getAll()).any(
+        (t) =>
+            t.status == DownloadStatus.downloading ||
+            (t.status == DownloadStatus.pending &&
+                _trackedJobs.contains(t.id.toString())),
+      );
+      await _foreground.invokeMethod(
+        _mangaJobs.isNotEmpty || active ? 'start' : 'stop',
+      );
+    } on PlatformException catch (_) {
+      /* Android can restrict background starts; checkpoints remain recoverable. */
+    }
+  }
 
   DownloadRepository get repo => ref.read(downloadRepositoryProvider);
 
@@ -43,6 +72,32 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
     final prefs = await ref.read(downloadPrefsProvider.future);
     _manager = bm.ByteMe(maxConcurrentDownloads: prefs.concurrentDownloads);
 
+    ref.onDispose(() {
+      for (final job in _mangaJobs.values) {
+        job.pause();
+      }
+      for (final sub in [..._statusSubs.values, ..._progressSubs.values]) {
+        sub.cancel();
+      }
+    });
+    for (final recovered in await CatalogSnapshot.recover()) {
+      if (await repo.getByCatalogKey(recovered.catalogKey) == null) {
+        await repo.putTask(recovered);
+      }
+    }
+    for (final t in await repo.getAll()) {
+      if (t.status != DownloadStatus.completed) continue;
+      final paths = t.isManga ? t.localPages : [t.savePath];
+      if (paths.isEmpty ||
+          (await Future.wait(
+            paths.map((p) => File(p).exists()),
+          )).any((exists) => !exists)) {
+        t.status = DownloadStatus.failed;
+        t.errorReason =
+            'Downloaded files are missing. Import or download again.';
+        await repo.putTask(t);
+      }
+    }
     final unfinished = await repo.getUnfinishedTasks();
     for (final t in unfinished) {
       if (t.status == DownloadStatus.downloading) {
@@ -52,13 +107,117 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
 
       // Auto-resume pending tasks
       if (t.status == DownloadStatus.pending) {
-        startDownload(t);
+        unawaited(startDownload(t).catchError((Object _) {}));
       }
     }
     return this;
   }
 
   Future<void> startDownload(DownloadTask task) async {
+    final key = task.catalogKey.isEmpty ? task.url : task.catalogKey;
+    if (!_starting.add(key)) return;
+    try {
+      final existing = task.catalogKey.isEmpty
+          ? null
+          : await repo.getByCatalogKey(task.catalogKey);
+      if (existing != null && existing.id != task.id) {
+        if (existing.status == DownloadStatus.completed ||
+            _trackedJobs.contains(existing.id.toString()) ||
+            _mangaJobs.containsKey(existing.id)) {
+          return;
+        }
+        // A newly resolved stream may carry a fresh expiring URL/token.
+        if (!task.isManga) {
+          existing.url = task.url;
+          existing.headers = task.headers;
+          existing.subtitles = task.subtitles;
+          existing.requiresProxy = task.requiresProxy;
+        }
+        task = existing;
+      }
+      if (task.isManga) {
+        await _startManga(task);
+      } else {
+        await _startAnime(task);
+      }
+    } catch (e) {
+      task.status = DownloadStatus.failed;
+      task.errorReason = e.toString();
+      await repo.putTask(task);
+      rethrow;
+    } finally {
+      _starting.remove(key);
+    }
+  }
+
+  Future<void> _startManga(DownloadTask task) async {
+    if (_mangaJobs.containsKey(task.id)) return;
+    if (task.status == DownloadStatus.completed) return;
+    final source = ref.read(
+      mangaSourceProvider(
+        SourceInfo(
+          id: task.sourceId,
+          name: task.sourceName,
+          type: SourceType.extension,
+          mediaType: MediaType.MANGA,
+          baseUrl: task.sourceBaseUrl,
+        ),
+      ),
+    );
+    final pages = await source
+        .getPages(task.itemId)
+        .timeout(const Duration(seconds: 45));
+    if (pages.isEmpty) throw StateError('Source returned no chapter pages');
+    String pageIdentity(String value) {
+      var uri = Uri.parse(value);
+      final upstream = uri.queryParameters['imageUrl'];
+      if (upstream != null) uri = Uri.parse(upstream);
+      return uri.replace(query: '', fragment: '').toString();
+    }
+
+    final previous = (jsonDecode(task.pagesJson) as List)
+        .map((p) => pageIdentity(p['url'] as String))
+        .toList();
+    final next = pages.map((p) => pageIdentity(p.url)).toList();
+    if (previous.isNotEmpty &&
+        (previous.length != next.length ||
+            List.generate(
+              next.length,
+              (i) => i,
+            ).any((i) => previous[i] != next[i]))) {
+      final folder = Directory(task.savePath);
+      if (await folder.exists()) await folder.delete(recursive: true);
+      task.localPages = [];
+      task.progress = 0;
+    }
+    task.pagesJson = jsonEncode(
+      pages.map((p) => {'url': p.url, 'headers': p.headers}).toList(),
+    );
+    await repo.putTask(task);
+    final job = MangaDownloader(task, repo);
+    _mangaJobs[task.id] = job;
+    await _syncForeground();
+    final limit = (await ref.read(
+      downloadPrefsProvider.future,
+    )).concurrentDownloads.clamp(1, 4);
+    Future<void> runBounded() async {
+      while (_runningManga >= limit && !job.paused) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      _runningManga++;
+      try {
+        await job.run();
+      } finally {
+        _runningManga--;
+        _mangaJobs.remove(task.id);
+        await _syncForeground();
+      }
+    }
+
+    unawaited(runBounded());
+  }
+
+  Future<void> _startAnime(DownloadTask task) async {
     final prefs = await ref.read(downloadPrefsProvider.future);
 
     // Unwrap local server/bridge URL to target URL
@@ -68,6 +227,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
       task.headersMap,
     );
     task.url = unwrapUrl;
+    var transportUrl = unwrapUrl;
 
     if (task.requiresProxy) {
       final server = ref.read(streamServerProvider);
@@ -78,10 +238,14 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
           headers: task.headersMap,
         ),
       );
-      task.url = hlsUrl;
+      transportUrl = hlsUrl;
     }
 
     if (prefs.useOneDM) {
+      task.status = DownloadStatus.paused;
+      task.errorReason =
+          'Sent to 1DM. Import the completed file from Downloads to associate it.';
+      await repo.putTask(task);
       final subtitleUrls = <String>[];
       final subtitleFileNames = <String>[];
       final usedSubNames = <String>{};
@@ -115,7 +279,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
       }
 
       final success = await OneDMService.instance.download(
-        url: task.url,
+        url: transportUrl,
         fileName: task.fileName,
         headers: Map.fromEntries(
           task.headers.map((header) => header.toMapEntry()),
@@ -126,7 +290,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
       if (success) return;
     }
 
-    if (DownloadUrlHelper.isTorrent(task.url)) {
+    if (DownloadUrlHelper.isTorrent(transportUrl)) {
       throw Exception(
         'Torrent streams cannot be downloaded by the internal download service. Please use 1DM.',
       );
@@ -136,12 +300,19 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
         task.isM3u8 ||
         await ref
             .read(httpClientProvider)
-            .isHLS(task.url, headers: task.headersMap);
+            .isHLS(transportUrl, headers: task.headersMap);
 
     if (isHLS && !task.isM3u8) {
       task.isM3u8 = true;
     }
 
+    if (isHLS &&
+        prefs.remuxerPreference == RemuxerPreference.builtin &&
+        !task.savePath.endsWith('.mkv')) {
+      final dot = task.savePath.lastIndexOf('.');
+      task.savePath =
+          '${dot > task.savePath.lastIndexOf('/') ? task.savePath.substring(0, dot) : task.savePath}.mkv';
+    }
     task.status = DownloadStatus.pending;
     task.errorReason = null;
     task.createdAt = DateTime.now();
@@ -154,6 +325,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
       return;
     }
     _trackedJobs.add(jobId);
+    await _syncForeground();
 
     bm.DownloadTask job;
     if (isHLS) {
@@ -172,7 +344,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
 
       job = _manager.downloadHls(
         id: jobId,
-        url: Uri.parse(task.url),
+        url: Uri.parse(transportUrl),
         savePath: task.savePath,
         maxConcurrentSegments: prefs.concurrentSegments,
         headers: task.headersMap,
@@ -184,7 +356,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
     } else {
       job = _manager.download(
         id: jobId,
-        url: Uri.parse(task.url),
+        url: Uri.parse(transportUrl),
         savePath: task.savePath,
         headers: task.headersMap,
       );
@@ -195,53 +367,58 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
 
   void _listenToJob(int dbTaskId, bm.DownloadTask job) {
     final notif = NotificationService.instance;
+    Future<void> updates = Future<void>.value();
 
     _progressSubs[dbTaskId]?.cancel();
     _statusSubs[dbTaskId]?.cancel();
 
-    _progressSubs[dbTaskId] = job.progressStream.listen((progress) async {
-      final now = DateTime.now();
-      final lastWrite = _lastDbWriteTime[dbTaskId];
+    _progressSubs[dbTaskId] = job.progressStream.listen((progress) {
+      updates = updates
+          .then((_) async {
+            final now = DateTime.now();
+            final lastWrite = _lastDbWriteTime[dbTaskId];
 
-      // Throttle updates (DB read/write & notifications) to once per second,
-      // but always process the final 100% completion event.
-      if (progress.percent < 1.0 &&
-          lastWrite != null &&
-          now.difference(lastWrite).inMilliseconds < 1000) {
-        return;
-      }
-      _lastDbWriteTime[dbTaskId] = now;
+            // Throttle updates (DB read/write & notifications) to once per second,
+            // but always process the final 100% completion event.
+            if (progress.percent < 1.0 &&
+                lastWrite != null &&
+                now.difference(lastWrite).inMilliseconds < 1000) {
+              return;
+            }
+            _lastDbWriteTime[dbTaskId] = now;
 
-      final task = await repo.getTaskById(dbTaskId);
-      if (task == null) return;
+            final task = await repo.getTaskById(dbTaskId);
+            if (task == null || task.status == DownloadStatus.completed) return;
 
-      if (task.status == DownloadStatus.pending) {
-        task.status = DownloadStatus.downloading;
-        task.errorReason = null;
-      }
+            if (task.status == DownloadStatus.pending) {
+              task.status = DownloadStatus.downloading;
+              task.errorReason = null;
+            }
 
-      task.downloadedBytes = progress.receivedBytes;
-      task.totalBytes = progress.totalBytes ?? 0;
-      task.progress = progress.percent;
-      task.speed = progress.formattedSpeed;
-      task.updatedAt = now;
-      await repo.putTask(task);
+            task.downloadedBytes = progress.receivedBytes;
+            task.totalBytes = progress.totalBytes ?? 0;
+            task.progress = progress.percent;
+            task.speed = progress.formattedSpeed;
+            task.updatedAt = now;
+            await repo.putTask(task);
 
-      final pct = (progress.percent * 100).toInt();
-      final lastNotified = _lastNotifiedPct[dbTaskId] ?? -1;
+            final pct = (progress.percent * 100).toInt();
+            final lastNotified = _lastNotifiedPct[dbTaskId] ?? -1;
 
-      // Update notification if the percentage changed
-      if (pct > lastNotified) {
-        _lastNotifiedPct[dbTaskId] = pct;
-        final title = task.fileName.isNotEmpty
-            ? task.fileName
-            : 'Episode ${task.episodeNumber}';
-        await notif.showDownloadProgress(
-          id: dbTaskId,
-          title: title,
-          progress: progress.percent,
-        );
-      }
+            // Update notification if the percentage changed
+            if (pct > lastNotified) {
+              _lastNotifiedPct[dbTaskId] = pct;
+              final title = task.fileName.isNotEmpty
+                  ? task.fileName
+                  : 'Episode ${task.episodeNumber}';
+              await notif.showDownloadProgress(
+                id: dbTaskId,
+                title: title,
+                progress: progress.percent,
+              );
+            }
+          })
+          .catchError((Object _) {});
     });
 
     Future<void> handleStatus(bm.DownloadStatus status) async {
@@ -268,8 +445,10 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
         case bm.DownloadStatus.completed:
           task.status = DownloadStatus.completed;
           task.errorReason = null;
+          if (!task.isM3u8) await _saveSubtitleSidecars(task);
           await notif.showDownloadComplete(id: dbTaskId, title: title);
-          await repo.deleteTask(dbTaskId);
+          task.progress = 1;
+          await repo.putTask(task);
           _cleanupJob(dbTaskId, job.id);
           return;
         case bm.DownloadStatus.failed:
@@ -285,6 +464,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
 
       task.updatedAt = DateTime.now();
       await repo.putTask(task);
+      await _syncForeground();
 
       if (status == bm.DownloadStatus.completed ||
           status == bm.DownloadStatus.failed ||
@@ -293,16 +473,82 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
       }
     }
 
-    _statusSubs[dbTaskId] = job.statusStream.listen(handleStatus);
+    _statusSubs[dbTaskId] = job.statusStream.listen((status) {
+      updates = updates
+          .then((_) => handleStatus(status))
+          .catchError((Object _) {});
+    });
 
     // If job has already transitioned past queued before subscription, sync status immediately
     if (job.status != bm.DownloadStatus.queued) {
-      handleStatus(job.status);
+      updates = updates
+          .then((_) => handleStatus(job.status))
+          .catchError((Object _) {});
+    }
+  }
+
+  Future<void> _saveSubtitleSidecars(DownloadTask task) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    var failures = 0;
+    try {
+      for (var i = 0; i < task.subtitles.length; i++) {
+        final sub = task.subtitles[i];
+        if (!sub.url.startsWith('http')) continue;
+        final uri = Uri.parse(sub.url);
+        final suffix = ['srt', 'ass', 'ssa', 'vtt'].firstWhere(
+          (ext) => uri.path.toLowerCase().endsWith('.$ext'),
+          orElse: () => 'srt',
+        );
+        final file = File('${task.savePath}.sub$i.$suffix');
+        final part = File('${file.path}.part');
+        try {
+          final request = await client
+              .getUrl(uri)
+              .timeout(const Duration(seconds: 15));
+          task.headersMap.forEach(request.headers.set);
+          final response = await request.close().timeout(
+            const Duration(seconds: 20),
+          );
+          if (response.statusCode != 200) {
+            throw HttpException('Subtitle HTTP ${response.statusCode}');
+          }
+          var size = 0;
+          final sink = part.openWrite();
+          try {
+            await for (final chunk in response.timeout(
+              const Duration(seconds: 20),
+            )) {
+              size += chunk.length;
+              if (size > 16 * 1024 * 1024) {
+                throw StateError('Subtitle exceeds 16 MiB');
+              }
+              sink.add(chunk);
+            }
+            await sink.flush();
+          } finally {
+            await sink.close();
+          }
+          if (size == 0) throw StateError('Empty subtitle');
+          await part.rename(file.path);
+          sub.url = file.path;
+        } catch (_) {
+          failures++;
+          if (await part.exists()) await part.delete();
+        }
+      }
+    } finally {
+      client.close(force: true);
+    }
+    if (failures > 0) {
+      task.errorReason =
+          'Video ready; $failures subtitle file(s) unavailable. Import local subtitle files with the episode.';
     }
   }
 
   void _cleanupJob(int dbTaskId, String jobId) {
     _trackedJobs.remove(jobId);
+    unawaited(_syncForeground());
     _lastNotifiedPct.remove(dbTaskId);
     _lastDbWriteTime.remove(dbTaskId);
     _statusSubs.remove(dbTaskId)?.cancel();
@@ -310,10 +556,13 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
   }
 
   Future<void> pauseDownload(int taskId) async {
+    _mangaJobs[taskId]?.pause();
     _manager.pause(taskId.toString());
   }
 
   Future<void> cancelDownload(int taskId) async {
+    _mangaJobs[taskId]?.cancel();
+    _mangaJobs.remove(taskId);
     _manager.cancel(taskId.toString());
     await repo.deleteTask(taskId);
   }

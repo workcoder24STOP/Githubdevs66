@@ -1,14 +1,13 @@
 import 'dart:io';
+import 'package:shonenx/features/offline/offline_catalog.dart';
 
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shonenx/core/network/http_client.dart';
 import 'package:shonenx/core/services/one_dm_service.dart';
-import 'package:shonenx/core/utils/device_info.dart';
 import 'package:shonenx/core/utils/http_x.dart';
 import 'package:shonenx/core/utils/subtitle_extractor.dart';
 import 'package:shonenx/features/downloads/domain/models/download_task.dart';
@@ -23,7 +22,6 @@ import 'package:shonenx/source_engine/models/source_info.dart';
 import 'package:shonenx/source_engine/source_engine_provider.dart';
 import 'package:shonenx/shared/widgets/app_bottom_sheet.dart';
 import 'package:shonenx/shared/widgets/marquee_text.dart';
-import 'package:shonenx/shared/widgets/permission_sheet.dart';
 
 class DownloadSheet extends ConsumerStatefulWidget {
   final UnifiedEpisode episode;
@@ -72,10 +70,22 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
   void initState() {
     super.initState();
     if (widget.media.type == MediaType.MANGA) {
-      _error = 'Manga downloading is not supported yet.';
+      Future.microtask(_downloadManga);
       return;
     }
     _loadServers();
+  }
+
+  Future<void> _downloadManga() async {
+    if (mounted) setState(() => _error = null);
+    try {
+      final task = await OfflineCatalog.mangaTask(widget.media, widget.source, widget.episode);
+      await ref.read(downloadManagerProvider.future);
+      await ref.read(downloadManagerProvider.notifier).startDownload(task);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   Future<void> _loadServers() async {
@@ -198,7 +208,7 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
     final isOneDMInstalled = isOneDMInstalledAsync.value ?? false;
 
     if (_error != null) {
-      return _ErrorState(message: _error!, onRetry: _loadServers);
+      return _ErrorState(message: _error!, onRetry: widget.media.type == MediaType.MANGA ? _downloadManga : _loadServers);
     }
     if (_servers == null) {
       return const SizedBox(
@@ -423,46 +433,6 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
       return;
     }
 
-    if (Platform.isAndroid) {
-      final permission = await DeviceInfo.isAndroid10OrBelow()
-          ? Permission.storage
-          : Permission.manageExternalStorage;
-
-      final status = await permission.status;
-
-      if (!status.isGranted) {
-        if (!mounted) return;
-
-        final granted = await PermissionSheet.show(
-          context,
-          permission: permission,
-          title: 'Storage Permission',
-          description:
-              'To download episodes, ShonenX needs access to your device storage.',
-          rationale:
-              'Used only to save downloaded video files to your chosen folder.',
-        );
-
-        if (!granted) {
-          return;
-        }
-      }
-
-      final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
-      if (!batteryStatus.isGranted) {
-        if (!mounted) return;
-        await PermissionSheet.show(
-          context,
-          permission: Permission.ignoreBatteryOptimizations,
-          title: 'Background Download Permission',
-          description:
-              'To keep downloads running when ShonenX is in the background or recent apps, please disable battery optimization.',
-          rationale:
-              'Android restricts background network and processor tasks to save battery. Disabling optimization ensures downloads are not paused when switching apps.',
-        );
-      }
-    }
-
     final prefs = await ref.read(downloadPrefsProvider.future);
     final epNum = widget.episode.number.toString().contains('.0')
         ? widget.episode.number.toInt().toString()
@@ -529,6 +499,8 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
           )
           .toList();
 
+    OfflineCatalog.describe(task, widget.media, widget.source, widget.episode);
+    await ref.read(downloadManagerProvider.future);
     await ref.read(downloadManagerProvider.notifier).startDownload(task);
 
     if (mounted) {

@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.roshancodespace.shonenx"
+        applicationId = "io.github.workcoder24stop.shonenzplus"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

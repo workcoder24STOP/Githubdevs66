@@ -11,7 +11,7 @@ import 'PackagedSource.dart';
 import 'ProtoReader.dart';
 
 String tachiyomiIndexUrl(String repoUrl) {
-  if (repoUrl.endsWith('index.min.json') || repoUrl.endsWith('.pb')) {
+  if (repoUrl.endsWith('index.min.json') || (repoUrl.endsWith('.pb') || repoUrl.endsWith('.pb.gz'))) {
     return repoUrl;
   }
   final trimmed = repoUrl.replaceAll(RegExp(r'/+$'), '');
@@ -237,7 +237,7 @@ enum RepoIndexFormat {
 }
 
 RepoIndexFormat tachiyomiIndexFormat(String url) =>
-    url.endsWith('.pb') ? RepoIndexFormat.protobuf : RepoIndexFormat.json;
+    (url.endsWith('.pb') || url.endsWith('.pb.gz')) ? RepoIndexFormat.protobuf : RepoIndexFormat.json;
 
 List<T> parseTachiyomiIndexBytes<T extends Source>(
   Uint8List body,

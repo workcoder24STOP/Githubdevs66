@@ -94,7 +94,7 @@ class UpdateService {
   static String resolveRepo() {
     final envRepo = Env.RELEASE_REPO.trim();
     if (envRepo.isNotEmpty) return envRepo;
-    return getCachedInstallerRepo() ?? 'roshancodespace/ShonenX';
+    return getCachedInstallerRepo() ?? 'workcoder24STOP/Githubdevs66';
   }
 
   static String? getCachedInstallerRepo() {

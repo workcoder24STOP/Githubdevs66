@@ -6,7 +6,7 @@ import 'package:shonenx/core/utils/app_logger.dart';
 
 class RemoteConfigService {
   static const String _configUrl =
-      'https://raw.githubusercontent.com/roshancodespace/shonenx-config/refs/heads/main/remote_config.json';
+      String.fromEnvironment('SHONENZ_CONFIG_URL');
 
   static const String _cacheKey = 'remote_config_cache';
   static const String _seenAnnouncementsKey =
@@ -36,6 +36,7 @@ class RemoteConfigService {
   }
 
   Future<void> fetchRemoteConfig() async {
+    if (_configUrl.isEmpty) return;
     try {
       final uri = Uri.parse(_configUrl).replace(
         queryParameters: {
@@ -45,7 +46,7 @@ class RemoteConfigService {
       final response = await http.get(
         uri,
         headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
-      );
+      ).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final jsonStr = response.body;
         final parsedConfig = RemoteConfig.fromJson(jsonDecode(jsonStr));

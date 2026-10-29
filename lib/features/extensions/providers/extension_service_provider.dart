@@ -57,7 +57,8 @@ class ExtensionAdapter {
             'https://raw.githubusercontent.com/',
           )
           .replaceFirst('/blob/', '/')
-          .replaceFirst('/tree/', '/');
+          .replaceFirst('/tree/', '/')
+          .replaceFirst('/raw/', '/');
     }
 
     // Ensure scheme.

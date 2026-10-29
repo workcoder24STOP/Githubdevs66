@@ -108,3 +108,15 @@ node_modules
 **/.vitepress/cache
 
 scratch
+
+# ShonenZ+ signing and reproducible tooling
+*.jks
+*.keystore
+!scripts/*.py
+!scripts/*.js
+!scripts/*.mjs
+!assets/runtime/anymex_runtime_host.apk
+
+android/local.properties
+
+/android/.kotlin/

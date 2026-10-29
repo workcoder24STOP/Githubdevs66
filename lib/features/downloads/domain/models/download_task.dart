@@ -52,9 +52,27 @@ class DownloadSubtitle {
 class DownloadTask {
   Id id = Isar.autoIncrement;
 
-  @Index(unique: true, replace: true)
+  @Index()
   String url = '';
 
+  @Index()
+  String catalogKey = '';
+  @Index()
+  String titleKey = '';
+  String mediaTitle = '';
+  String sourceId = '';
+  String sourceName = '';
+  String sourceBaseUrl = '';
+  String itemId = '';
+  String itemTitle = '';
+  int season = 1;
+  bool isManga = false;
+  bool imported = false;
+  String pagesJson = '[]';
+  List<String> localPages = [];
+  int readingPage = 0;
+  List<int> bookmarks = [];
+  int playbackMs = 0;
   String mediaId = '';
   double episodeNumber = 0.0;
   String savePath = '';

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:anymex_extension_runtime_bridge/anymex_extension_runtime_bridge.dart'
     as bridge;
 import 'package:shonenx/core/utils/app_logger.dart';
@@ -19,11 +20,14 @@ class MangaSourceAdapter extends BaseSourceAdapter implements MangaSource {
   }) async {
     final methodLog = log.child('getChapters');
     try {
-      final detail = await getRawDetail(mangaId);
+      final detail = await getRawDetail(
+        mangaId,
+      ).timeout(const Duration(seconds: 45));
 
       methodLog.d('chapters=${detail.episodes?.length ?? 0}');
 
       return (detail.episodes ?? [])
+          .where((e) => e.url?.isNotEmpty ?? false)
           .map(
             (e) => UnifiedChapter(
               id: '${e.url!}|${e.episodeNumber}',
@@ -33,10 +37,14 @@ class MangaSourceAdapter extends BaseSourceAdapter implements MangaSource {
               uploadDate: e.dateUpload,
             ),
           )
-          .toList();
+          .toList()
+        ..sort((a, b) {
+          final n = a.number.compareTo(b.number);
+          return n != 0 ? n : a.id.compareTo(b.id);
+        });
     } catch (e, st) {
       methodLog.e('getChapters failed', e, st);
-      return [];
+      rethrow;
     }
   }
 
@@ -45,27 +53,31 @@ class MangaSourceAdapter extends BaseSourceAdapter implements MangaSource {
     final methodLog = log.child('getPages');
     try {
       methodLog.i('chapterId=$chapterId');
-      final parts = chapterId.split('|');
-      final url = parts[0];
-      final epNum = parts.length > 1 ? parts[1] : '1';
+      final separator = chapterId.lastIndexOf('|');
+      final url = separator < 0 ? chapterId : chapterId.substring(0, separator);
+      final epNum = separator < 0 ? '1' : chapterId.substring(separator + 1);
 
-      final pages = await source.methods.getPageList(
-        bridge.DEpisode(url: url, episodeNumber: epNum),
-      );
+      final pages = await source.methods
+          .getPageList(bridge.DEpisode(url: url, episodeNumber: epNum))
+          .timeout(const Duration(seconds: 45));
 
       methodLog.d('pages=${pages.length}');
       return pages.map((e) {
         final headers = {
-          ...(e.headers ?? {}),
-          'referer': '${sourceInfo.baseUrl}/',
+          if (sourceInfo.baseUrl?.isNotEmpty ?? false)
+            'referer': '${sourceInfo.baseUrl}/',
           'user-agent':
               'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+          ...{
+            for (final h in (e.headers ?? <String, String>{}).entries)
+              h.key.toLowerCase(): h.value,
+          },
         };
         return ChapterPage(url: e.url, headers: headers);
       }).toList();
     } catch (e, st) {
       methodLog.e('getPages failed', e, st);
-      return [];
+      rethrow;
     }
   }
 

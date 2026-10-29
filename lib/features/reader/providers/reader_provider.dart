@@ -1,4 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+import 'package:shonenx/features/downloads/providers/download_provider.dart';
+import 'package:shonenx/features/downloads/domain/models/download_task.dart';
+import 'package:shonenx/features/offline/offline_catalog.dart';
 import 'package:shonenx/features/history/domain/models/history_entry.dart';
 import 'package:shonenx/features/history/providers/history_provider.dart';
 import 'package:shonenx/features/reader/domain/reader_mode.dart';
@@ -64,8 +68,19 @@ class ReaderNotifier extends Notifier<ReaderState> {
   Future<void> _fetchPages(ReaderModeOnline mode) async {
     state = state.copyWith(pages: const AsyncValue.loading());
     try {
-      final source = ref.read(mangaSourceProvider(mode.sourceInfo));
-      final pageList = await source.getPages(mode.episode.id);
+      final local = await ref.read(downloadRepositoryProvider).getByCatalogKey(
+        OfflineCatalog.itemKey(mode.media, mode.sourceInfo, mode.episode));
+      final List<ChapterPage> pageList;
+      if (local != null && local.status == DownloadStatus.completed) {
+        pageList = local.localPages.map((p) => ChapterPage(url: p)).toList();
+        for (final page in pageList) {
+          if (!await File(page.url).exists()) throw StateError('Downloaded page is missing. Download the chapter again.');
+        }
+      } else {
+        final source = ref.read(mangaSourceProvider(mode.sourceInfo));
+        pageList = await source.getPages(mode.episode.id).timeout(const Duration(seconds: 45));
+      }
+      if (!ref.mounted) return;
 
       if (pageList.isEmpty) {
         state = state.copyWith(
@@ -92,6 +107,7 @@ class ReaderNotifier extends Notifier<ReaderState> {
 
       _saveHistory(startPage, pageList.length);
     } catch (e, st) {
+      if (!ref.mounted) return;
       state = state.copyWith(pages: AsyncValue.error(e, st));
     }
   }
@@ -120,6 +136,10 @@ class ReaderNotifier extends Notifier<ReaderState> {
     if (total == 0) return;
     if (ref.read(securityPrefsProvider).incognitoMode) return;
     final savedPageNumber = pageIndex + 1;
+    final repository = ref.read(downloadRepositoryProvider);
+    repository.getByCatalogKey(OfflineCatalog.itemKey(arg.media, arg.sourceInfo, arg.episode)).then((task) {
+      if (task != null) repository.updateReading(task.id, pageIndex);
+    });
 
     final entry = HistoryEntry()
       ..mediaType = MediaType.MANGA.id

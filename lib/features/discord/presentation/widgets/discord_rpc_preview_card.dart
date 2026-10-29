@@ -26,7 +26,7 @@ class _DiscordRpcPreviewCardState extends State<DiscordRpcPreviewCard> {
   @override
   Widget build(BuildContext context) {
     String headerText = 'Playing';
-    String mainTitle = 'ShonenX';
+    String mainTitle = 'ShonenZ+';
     String subTitle1 = widget.settings.idleActivity;
     String subTitle2 = widget.settings.idleDetails;
     String startTime = '12:00';
@@ -38,7 +38,7 @@ class _DiscordRpcPreviewCardState extends State<DiscordRpcPreviewCard> {
     switch (_activeTab) {
       case RpcPreviewTab.idle:
         headerText = 'Playing';
-        mainTitle = 'ShonenX';
+        mainTitle = 'ShonenZ+';
         subTitle1 = widget.settings.idleActivity;
         subTitle2 = widget.settings.idleDetails;
         coverUrl = null;

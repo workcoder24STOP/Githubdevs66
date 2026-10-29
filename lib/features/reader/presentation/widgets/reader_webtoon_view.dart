@@ -157,7 +157,7 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
           physics: const BouncingScrollPhysics(),
           itemScrollController: _scrollController,
           itemPositionsListener: _positionsListener,
-          initialScrollIndex: widget.initialPage,
+          initialScrollIndex: widget.pages.isEmpty ? 0 : widget.initialPage.clamp(0, widget.pages.length - 1),
           itemCount: widget.pages.length,
           itemBuilder: (context, index) {
             final page = widget.pages[index];
@@ -167,7 +167,7 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
               url: page.url,
               headers: page.headers ?? const {},
               index: index,
-              scaleType: widget.scaleType,
+              scaleType: ReaderScaleType.fitWidth,
               textColor: widget.textColor,
             );
 

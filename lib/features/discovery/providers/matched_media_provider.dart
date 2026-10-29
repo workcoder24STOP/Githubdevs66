@@ -103,7 +103,9 @@ class MediaMatchNotifier extends AsyncNotifier<MatchedMediaState> {
 
       final sourceInfo =
           availableSources.firstWhereOrNull((s) => s.id == args.sourceId) ??
-          prefs.sourceInfo;
+          (throw StateError(
+            'The saved source is not installed. Select a source manually.',
+          ));
 
       if (prefs.sourceInfo.id != sourceInfo.id ||
           prefs.matchedMediaId != args.providerId ||
@@ -145,38 +147,68 @@ class MediaMatchNotifier extends AsyncNotifier<MatchedMediaState> {
       );
     }
 
-    _log.i('Searching match on ${prefs.sourceInfo.name}...');
-    final sourceImpl = args.type.usesAnimeSources
-        ? ref.read(animeSourceProvider(prefs.sourceInfo))
-        : ref.read(mangaSourceProvider(prefs.sourceInfo));
-
-    final result = await MediaMatchService(
-      sourceImpl,
-      args.type,
-    ).findBestMatch(args.toMedia().title);
-
-    if (result == null) {
-      _log.w('No match found on ${prefs.sourceInfo.name}');
-      return MatchedMediaState(sourceInfo: prefs.sourceInfo);
+    final available = await ref.read(args.type.availableSourcesProvider.future);
+    final candidates = [
+      prefs.sourceInfo,
+      ...available.where((s) => s.id != prefs.sourceInfo.id),
+    ];
+    final failures = <String>[];
+    for (final info in candidates.take(6)) {
+      if (!ref.mounted) break;
+      try {
+        final implementation = args.type.usesAnimeSources
+            ? ref.read(animeSourceProvider(info))
+            : ref.read(mangaSourceProvider(info));
+        final match = await MediaMatchService(
+          implementation,
+          args.type,
+        ).findBestMatch(args.toMedia().title);
+        if (match == null) {
+          failures.add('${info.name}: no confident match');
+          continue;
+        }
+        // Verify a usable index before persisting an automatic source choice.
+        final count = args.type.usesAnimeSources
+            ? (await ref
+                      .read(animeSourceProvider(info))
+                      .getEpisodes(match.id)
+                      .timeout(const Duration(seconds: 30)))
+                  .length
+            : (await ref
+                      .read(mangaSourceProvider(info))
+                      .getChapters(match.id)
+                      .timeout(const Duration(seconds: 30)))
+                  .length;
+        if (count == 0) {
+          failures.add('${info.name}: empty index');
+          continue;
+        }
+        if (!ref.mounted) break;
+        Future.microtask(() {
+          if (ref.mounted) {
+            ref
+                .read(mediaPreferenceProvider(args).notifier)
+                .syncDirectMatchToDb(
+                  info,
+                  match.id,
+                  match.title.getPreferedTitle,
+                );
+          }
+        });
+        return MatchedMediaState(
+          sourceInfo: info,
+          matchedMedia: MatchedMedia(
+            id: match.id,
+            title: match.title.getPreferedTitle,
+          ),
+        );
+      } catch (e) {
+        failures.add('${info.name}: $e');
+      }
     }
-
-    _log.s(
-      'Matched → "${result.title.getPreferedTitle}" (${result.id}) on ${prefs.sourceInfo.name}',
-    );
-
-    // Cache the match in Isar DB to bypass matchmaker on next launch
-    Future.microtask(() {
-      ref
-          .read(mediaPreferenceProvider(args).notifier)
-          .saveAutoMatch(result.id, result.title.getPreferedTitle);
-    });
-
     return MatchedMediaState(
       sourceInfo: prefs.sourceInfo,
-      matchedMedia: MatchedMedia(
-        id: result.id,
-        title: result.title.getPreferedTitle,
-      ),
+      error: 'Select a source or match manually. ${failures.join('; ')}',
     );
   }
 }

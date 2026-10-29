@@ -16,6 +16,7 @@ class ProtoMessage {
 
       final field = key >> 3;
       final wireType = key & 0x7;
+      if (field == 0) throw const FormatException('Invalid protobuf field zero');
 
       Object value;
       switch (wireType) {
@@ -25,7 +26,7 @@ class ProtoMessage {
           value = v;
           break;
         case 1:
-          if (i + 8 > bytes.length) return ProtoMessage(fields);
+          if (i + 8 > bytes.length) throw const FormatException('Truncated or unsupported protobuf field');
           value = bytes.buffer
               .asByteData(bytes.offsetInBytes + i, 8)
               .getUint64(0, Endian.little);
@@ -34,19 +35,19 @@ class ProtoMessage {
         case 2:
           final (len, next) = _varint(bytes, i);
           i = next;
-          if (i + len > bytes.length) return ProtoMessage(fields);
+          if (len < 0 || i + len > bytes.length) throw const FormatException('Truncated or unsupported protobuf field');
           value = Uint8List.sublistView(bytes, i, i + len);
           i += len;
           break;
         case 5:
-          if (i + 4 > bytes.length) return ProtoMessage(fields);
+          if (i + 4 > bytes.length) throw const FormatException('Truncated or unsupported protobuf field');
           value = bytes.buffer
               .asByteData(bytes.offsetInBytes + i, 4)
               .getUint32(0, Endian.little);
           i += 4;
           break;
         default:
-          return ProtoMessage(fields);
+          throw const FormatException('Unsupported protobuf wire type');
       }
 
       (fields[field] ??= <Object>[]).add(value);
@@ -63,12 +64,12 @@ class ProtoMessage {
     while (i < bytes.length) {
       final b = bytes[i++];
       result |= (b & 0x7f) << shift;
-      if (b & 0x80 == 0) break;
+      if (b & 0x80 == 0) return (result, i);
       shift += 7;
       if (shift > 63) break;
     }
 
-    return (result, i);
+    throw const FormatException('Truncated or oversized protobuf varint');
   }
 
   bool has(int field) => fields.containsKey(field);

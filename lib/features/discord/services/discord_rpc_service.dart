@@ -155,7 +155,7 @@ class DiscordRpcService {
           largeImage: coverUrl ?? _appIconUrl,
           largeText: title,
           smallImage: _appIconUrl,
-          smallText: 'ShonenX',
+          smallText: 'ShonenZ+',
         ),
         buttons: showButtons
             ? [RPCButton(label: 'View Anime', url: mediaUrl)]
@@ -243,7 +243,7 @@ class DiscordRpcService {
           largeImage: coverUrl ?? _appIconUrl,
           largeText: title,
           smallImage: _appIconUrl,
-          smallText: 'ShonenX',
+          smallText: 'ShonenZ+',
         ),
         buttons: showButtons
             ? [RPCButton(label: 'View Manga', url: mediaUrl)]
@@ -291,7 +291,7 @@ class DiscordRpcService {
           largeImage: coverUrl ?? _appIconUrl,
           largeText: title,
           smallImage: _appIconUrl,
-          smallText: 'ShonenX',
+          smallText: 'ShonenZ+',
         ),
         buttons: showButtons
             ? [RPCButton(label: 'View $typeStr', url: mediaUrl)]
@@ -329,10 +329,10 @@ class DiscordRpcService {
         details: primary,
         state: secondary,
         timestamps: RPCTimestamps(start: _browsingStartMs),
-        assets: const RPCAssets(largeImage: _appIconUrl, largeText: 'ShonenX'),
+        assets: const RPCAssets(largeImage: _appIconUrl, largeText: 'ShonenZ+'),
       ),
       gateway: _gatewayPresence(
-        name: 'ShonenX',
+        name: 'ShonenZ+',
         type: 0,
         details: primary,
         state: secondary,
@@ -438,9 +438,9 @@ class DiscordRpcService {
   }) async {
     final assets = <String, dynamic>{
       'large_image': await _resolveAsset(coverUrl ?? _appIconUrl),
-      'large_text': largeText ?? 'ShonenX',
+      'large_text': largeText ?? 'ShonenZ+',
       'small_image': await _resolveAsset(_appIconUrl),
-      'small_text': 'ShonenX',
+      'small_text': 'ShonenZ+',
     };
 
     if (coverUrl == null) {
@@ -716,7 +716,7 @@ class _GatewayConnection {
         'token': t,
         'properties': {
           '\$os': Platform.operatingSystem,
-          '\$browser': 'ShonenX',
+          '\$browser': 'ShonenZ+',
           '\$device': 'ShonenX Client',
         },
         'presence': {'status': 'online', 'afk': false},

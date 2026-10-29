@@ -1,7 +1,7 @@
+import 'package:anymex_extension_runtime_bridge/Settings/KvStore.dart';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:anymex_extension_runtime_bridge/Settings/KvStore.dart';
 import 'package:anymex_extension_runtime_bridge/anymex_extension_runtime_bridge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,7 +70,7 @@ class AppInit {
       final dir = await getApplicationDocumentsDirectory();
       final dslDir = Platform.isAndroid || Platform.isIOS || Platform.isMacOS
           ? Directory(p.join(dir.path, 'dsl_providers'))
-          : Directory(p.join(dir.path, 'ShonenX', 'dsl_providers'));
+          : Directory(p.join(dir.path, 'ShonenZ+', 'dsl_providers'));
 
       if (await dslDir.exists()) {
         await dslDir.delete(recursive: true);
@@ -128,7 +128,7 @@ class AppInit {
     final log = _log.child('_initDatabase');
 
     try {
-      final dir = await getDatabaseDirectory('ShonenX');
+      final dir = await getDatabaseDirectory('ShonenZ+');
 
       isar = await Isar.open(
         [
@@ -268,7 +268,7 @@ class AppInit {
     try {
       await AnymeXExtensionBridge.init(
         getDirectory: AnymeXExtensionBridge.defaultGetDirectory(
-          baseDirectory: await getDatabaseDirectory('ShonenX'),
+          baseDirectory: await getDatabaseDirectory('ShonenZ+'),
         ),
         projectName: "ShonenX",
       );
@@ -283,7 +283,14 @@ class AppInit {
         retryCount++;
       }
 
-      ref.read(extensionAdapterProvider);
+      final adapter = ref.read(extensionAdapterProvider);
+      const defaultRepo = 'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.pb';
+      if (getVal<bool>('shonenz_default_manga_repo_added') != true) {
+        try {
+          await adapter.addRepo(defaultRepo, 'aniyomi', ItemType.manga).timeout(const Duration(seconds: 20));
+          setVal('shonenz_default_manga_repo_added', true);
+        } catch (e) { log.w('Default manga repository unavailable; add it in Extensions.', e); }
+      }
 
       // await extManager.onRuntimeBridgeInitialization();
 

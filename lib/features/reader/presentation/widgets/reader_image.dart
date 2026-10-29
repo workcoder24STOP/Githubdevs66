@@ -1,8 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shonenx/shared/widgets/smart_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shonenx/features/reader/providers/reader_prefs_provider.dart';
 
-class ReaderImage extends StatelessWidget {
+class ReaderImage extends StatefulWidget {
   final String url;
   final Map<String, String>? headers;
   final int index;
@@ -19,17 +20,31 @@ class ReaderImage extends StatelessWidget {
   });
 
   @override
+  State<ReaderImage> createState() => _ReaderImageState();
+}
+
+class _ReaderImageState extends State<ReaderImage> {
+  int attempt = 0;
+  Future<void> retry() async {
+    if (widget.url.startsWith('http')) {
+      await CachedNetworkImage.evictFromCache(widget.url.split('#').first);
+    }
+    if (mounted) setState(() => attempt++);
+  }
+
+  @override
   Widget build(BuildContext context) {
     BoxFit fit = BoxFit.fitWidth;
-    if (scaleType == ReaderScaleType.fitHeight) {
+    if (widget.scaleType == ReaderScaleType.fitHeight) {
       fit = BoxFit.fitHeight;
-    } else if (scaleType == ReaderScaleType.original) {
+    } else if (widget.scaleType == ReaderScaleType.original) {
       fit = BoxFit.contain;
     }
 
     return SmartImage(
-      imageUrl: url,
-      httpHeaders: headers,
+      key: ValueKey('${widget.url}:$attempt'),
+      imageUrl: widget.url,
+      httpHeaders: widget.headers,
       fit: fit,
       width: double.infinity,
       memCacheWidth: 1400,
@@ -51,8 +66,13 @@ class ReaderImage extends StatelessWidget {
             const Icon(Icons.broken_image, color: Colors.grey, size: 48),
             const SizedBox(height: 8),
             Text(
-              'Failed to load page ${index + 1}',
-              style: TextStyle(color: textColor.withValues(alpha: 0.5)),
+              'Failed to load page ${widget.index + 1}',
+              style: TextStyle(color: widget.textColor.withValues(alpha: 0.5)),
+            ),
+            TextButton.icon(
+              onPressed: retry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry page'),
             ),
           ],
         ),

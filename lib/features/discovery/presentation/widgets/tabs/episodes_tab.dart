@@ -198,7 +198,7 @@ class _EpisodesTabWidgetState extends ConsumerState<EpisodesTabWidget>
                               );
                             },
                           ),
-                          if (widget.media.type == MediaType.ANIME)
+                          if (widget.media.type == MediaType.ANIME || widget.media.type == MediaType.MANGA)
                             ListTile(
                               title: const Text('Stream / Download'),
                               leading: const Icon(Icons.tune_rounded),

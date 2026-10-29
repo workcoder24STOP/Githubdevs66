@@ -1,3 +1,4 @@
+import 'package:shonenx/features/downloads/providers/download_provider.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -262,7 +263,13 @@ class PlayerController extends Notifier<PlayerState> {
     });
   }
 
+  int? _offlineTaskId;
+  int _lastOfflineSecond = -10;
   void _onPlaybackProgress(Duration position, Duration duration) {
+    if (_offlineTaskId != null && (position.inSeconds - _lastOfflineSecond).abs() >= 5) {
+      _lastOfflineSecond = position.inSeconds;
+      ref.read(downloadRepositoryProvider).updatePlayback(_offlineTaskId!, position.inMilliseconds);
+    }
     if (_media == null || state.activeEpisode == null) return;
     if (duration.inSeconds < 30 || position.inSeconds <= 0) return;
 
@@ -307,6 +314,8 @@ class PlayerController extends Notifier<PlayerState> {
     _screenshotController = screenshotController;
     _progressTracker.setScreenshotController(screenshotController);
 
+    _offlineTaskId = mode is PlayerModeOffline ? mode.taskId : null;
+    _lastOfflineSecond = -10;
     if (mode is PlayerModeOnline) {
       _source = ref.read(animeSourceProvider(mode.sourceInfo));
       _media = mode.media;
@@ -379,10 +388,10 @@ class PlayerController extends Notifier<PlayerState> {
       final localStream = VideoStream(
         url: mode.filePath,
         quality: 'Local',
-        subtitles: [],
+        subtitles: mode.subtitles,
       );
 
-      final subtitles = [SubtitleTrack.none];
+      final subtitles = [SubtitleTrack.none, ...mode.subtitles];
       final activeSubtitle = _resolver.resolveSubtitle(subtitles);
 
       state = state.copyWith(
@@ -398,7 +407,7 @@ class PlayerController extends Notifier<PlayerState> {
       await _engine.initialize(
         localStream,
         subtitle: activeSubtitle,
-        startAt: Duration.zero,
+        startAt: mode.startPosition,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());

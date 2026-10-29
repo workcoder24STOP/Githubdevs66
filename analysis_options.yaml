@@ -3,6 +3,7 @@ analyzer:
   errors:
     experimental_member_use: ignore
   exclude:
+    - packages/**
     - build/**
     - android/**
     - ios/**

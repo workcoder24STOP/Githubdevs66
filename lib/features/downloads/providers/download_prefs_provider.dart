@@ -129,11 +129,11 @@ class DownloadPrefsNotifier extends AsyncNotifier<DownloadPrefs> {
     if (Platform.isAndroid) {
       final extDir = await getExternalStorageDirectory();
       defaultPath = extDir != null
-          ? '${extDir.path}/ShonenX'
-          : '/storage/emulated/0/ShonenX';
+          ? '${extDir.path}/ShonenZPlus'
+          : '${(await getApplicationSupportDirectory()).path}/ShonenZPlus';
     } else {
       final docDir = await getApplicationDocumentsDirectory();
-      defaultPath = '${docDir.path}/ShonenX/Downloads';
+      defaultPath = '${docDir.path}/ShonenZPlus/Downloads';
     }
 
     if (jsonStr != null) {
@@ -205,7 +205,7 @@ class DownloadPrefsNotifier extends AsyncNotifier<DownloadPrefs> {
       return '/storage/emulated/0/Download/ShonenX';
     } else {
       final docDir = await getApplicationDocumentsDirectory();
-      return '${docDir.path}/ShonenX/Downloads';
+      return '${docDir.path}/ShonenZPlus/Downloads';
     }
   }
 

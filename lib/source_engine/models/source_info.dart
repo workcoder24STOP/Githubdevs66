@@ -40,6 +40,7 @@ class SourceInfo {
     'type': type.name,
     'mediaType': mediaType.name,
     'iconUrl': iconUrl,
+    'baseUrl': baseUrl,
     'lang': lang,
     'isNsfw': isNsfw,
   };
@@ -54,6 +55,7 @@ class SourceInfo {
         orElse: () => MediaType.ANIME,
       ),
       iconUrl: map['iconUrl'],
+      baseUrl: map['baseUrl'],
       lang: map['lang'],
       isNsfw: map['isNsfw'] ?? false,
     );

@@ -218,7 +218,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _buildWelcomePage(ThemeData theme, ColorScheme cs) {
     return _buildPageLayout(
-      title: 'Welcome to ShonenX',
+      title: 'Welcome to ShonenZ+',
       description:
           'Your premium, ad-free gateway to discovering and tracking the best anime and manga.',
       customIcon: SvgIcon(
@@ -1245,7 +1245,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           'ShonenX includes $inbuiltCount inbuilt source(s) out of the box. You can significantly expand your library using community-built extensions.';
     } else {
       description =
-          'ShonenX relies on powerful community-built extensions to fetch content. You can install extensions later in settings to start watching.';
+          'ShonenZ+ relies on powerful community-built extensions to fetch content. You can install extensions later in settings to start watching.';
     }
 
     return _buildPageLayout(
@@ -1572,7 +1572,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               permission: Permission.notification,
               title: 'Allow Notifications',
               description:
-                  'ShonenX needs notification access to keep you updated.',
+                  'ShonenZ+ needs notification access to keep you updated.',
               rationale:
                   'This allows the app to show background download progress and notify you when new episodes of your tracked anime are released.',
             );

@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shonenx/features/offline/offline_catalog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -350,20 +353,30 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
   }) async {
     if (selectedServer == null || selectedStream == null) return;
 
+    final storagePrefs = await ref.read(downloadPrefsProvider.future);
     if (fromIndexZero) {
       if (Platform.isAndroid) {
+        final privateRoots = [
+          (await getExternalStorageDirectory())?.path,
+          (await getApplicationSupportDirectory()).path,
+        ].whereType<String>();
+        final needsStorageGrant = !privateRoots.any(
+          (root) =>
+              p.isWithin(root, storagePrefs.downloadPath) ||
+              p.equals(root, storagePrefs.downloadPath),
+        );
         final permission = await DeviceInfo.isAndroid10OrBelow()
             ? Permission.storage
             : Permission.manageExternalStorage;
         final status = await permission.status;
-        if (!status.isGranted) {
+        if (needsStorageGrant && !status.isGranted) {
           if (!mounted) return;
           final granted = await PermissionSheet.show(
             context,
             permission: permission,
             title: 'Storage Permission',
             description:
-                'To download episodes, ShonenX needs access to your device storage.',
+                'To download episodes, ShonenZ+ needs access to your device storage.',
             rationale:
                 'Used only to save downloaded video files to your chosen folder.',
           );
@@ -557,6 +570,30 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
         );
 
         if (use1DM) {
+          final externalTask = DownloadTask()
+            ..url = extractedUrl
+            ..savePath = '$targetDir/$fileName'
+            ..fileName = fileName
+            ..headersMap = mergedHeaders
+            ..status = DownloadStatus.paused
+            ..errorReason =
+                'Handed to 1DM. Import the completed episode from this title.';
+          OfflineCatalog.describe(
+            externalTask,
+            widget.media,
+            widget.source,
+            ep,
+          );
+          final existing = await ref
+              .read(downloadRepositoryProvider)
+              .getByCatalogKey(externalTask.catalogKey);
+          if (existing?.status == DownloadStatus.completed) {
+            currentIndex++;
+            continue;
+          }
+          if (existing == null) {
+            await ref.read(downloadRepositoryProvider).putTask(externalTask);
+          }
           oneDmUrls.add(extractedUrl);
           oneDmFileNames.add(fileName);
           oneDmHeaders ??= mergedHeaders;
@@ -621,6 +658,8 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
                 )
                 .toList();
 
+          OfflineCatalog.describe(task, widget.media, widget.source, ep);
+          await ref.read(downloadManagerProvider.future);
           await ref.read(downloadManagerProvider.notifier).startDownload(task);
           queuedTaskIds.add(task.id);
         }

@@ -152,6 +152,15 @@ class AnymeXRuntimeBridge {
 
     final bridgeFile = File(bridgePath);
     bool exists = await bridgeFile.exists();
+    if (Platform.isAndroid && !exists) {
+      // Pinned runtime shipped with ShonenZ+; no first-launch download required.
+      final asset = await rootBundle.load('assets/runtime/anymex_runtime_host.apk');
+      await bridgeFile.parent.create(recursive: true);
+      final temporary = File('$bridgePath.tmp');
+      await temporary.writeAsBytes(asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes), flush: true);
+      await temporary.rename(bridgePath);
+      exists = true;
+    }
 
     if (Platform.isAndroid && exists) {
       final isValid = await RuntimeDownloader.isValidZip(bridgeFile, minBytes: 5 * 1024 * 1024);

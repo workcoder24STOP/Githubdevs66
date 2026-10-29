@@ -91,12 +91,17 @@ class _ReaderPageViewState extends State<ReaderPageView> {
         panEnabled: _isZoomed,
         scaleEnabled: scaleEnabled,
         child: PageView.builder(
-          physics: const BouncingScrollPhysics(),
+          physics: _isZoomed || scaleEnabled
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
           controller: widget.controller,
           reverse: widget.direction == ReaderDirection.rtl,
           allowImplicitScrolling: true,
           itemCount: widget.pages.length,
-          onPageChanged: widget.onPageChanged,
+          onPageChanged: (page) {
+            _zoomController.value = Matrix4.identity();
+            widget.onPageChanged(page);
+          },
           itemBuilder: (context, index) {
             final page = widget.pages[index];
             return ReaderImage(
