@@ -1,0 +1,12 @@
+export 'src/commentum_client.dart';
+export 'src/commentum_config.dart';
+export 'src/commentum_storage.dart';
+export 'src/models/comment.dart';
+export 'src/utils/comment_extensions.dart';
+export 'src/models/error.dart';
+export 'src/models/response.dart';
+export 'src/models/user.dart';
+export 'src/modules/auth_manager.dart';
+export 'src/modules/comment_manager.dart';
+export 'src/modules/discussion_controller.dart';
+export 'src/modules/interaction_manager.dart';
