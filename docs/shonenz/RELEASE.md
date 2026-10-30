@@ -16,15 +16,18 @@ for implemented paths, observed checks, and remaining issues.
 - Corresponding application code:
   `8a1e051f5043e6e76e4b05b56e9a76f6c56f123f` on branch
   `coderabbit/shonenz-app-rebuild/e8888d33` in workcoder24STOP/Githubdevs66.
-  Later source commits add release documentation only.
+  Later source commits update documentation and release tools; the application
+  code remains unchanged.
 
 ## Observed checks
 
 - ARM64 and x64 release builds passed,423.2seconds for the final combined build.
 - Full application analyzer: no issues. Five focused manga contract tests passed.
-- Shared cloud Chromium rebuilt the actual APK with networking disabled. The
-  downloaded reconstructed APK exactly matches the signed binary's SHA-256.
-  Missing/corrupted pieces and the no-WebCrypto fallback were checked separately.
+- Shared cloud Chromium opened the offline joiner from a local file, accepted
+  the APK parts one at a time (including a renamed part), and rebuilt the actual
+  APK with networking disabled. The downloaded APK matched the signed binary's
+  SHA-256. Missing and corrupted parts were rejected. Physical Android browser
+  testing has not been performed.
 - Kagane1.6.37: real search, stable chapter IDs and complete9-page download through
   the published AnymeX2.7.3 desktop runtime passed.
 - Atsumaru1.6.25: real search,1,196-chapter index and first image passed initially;

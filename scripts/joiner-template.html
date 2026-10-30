@@ -1,54 +1,81 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; base-uri 'none'; form-action 'none'"><title>ShonenZ+ · Offline APK joiner</title>
-<style>body{background:#101524;color:#edf5f4;font:17px/1.6 system-ui;margin:0}main{max-width:760px;margin:6vh auto;padding:30px}h1{font-size:42px;line-height:1.15}em{font-style:normal;color:#63f5c8}section{background:#1c2637;border:1px solid #354356;border-radius:20px;padding:26px;margin:24px 0}button,a{background:#63f5c8;color:#10231d;border:0;border-radius:10px;padding:13px 20px;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.45;cursor:wait}input{max-width:100%;padding:16px 0}small{overflow-wrap:anywhere;color:#b3c5ce}#status{white-space:pre-wrap}a[hidden]{display:none}label{display:block;font-weight:650}li{margin:8px 0}progress{width:100%;accent-color:#63f5c8}</style>
-<main><p><em>SHONENZ+</em> / RELEASE TOOLS</p><h1>Your APK.<br>Joined <em>entirely offline.</em></h1><p>These are pieces of one signed APK, not Android split-install packages. Download every part and this HTML file, then open this file in a browser.</p><section><ol><li>Select all the <strong>.part</strong> files below, in any order.</li><li>The joiner checks each part’s name, size and SHA-256.</li><li>Save the verified APK, then open it on your Android device.</li></ol><label for="parts">Choose all APK parts</label><input id="parts" type="file" multiple><p><button id="join" type="button">Verify &amp; join APK</button></p><progress id="progress" value="0" max="1"></progress><p id="status" role="status" aria-live="polite">Ready. No files leave your device.</p><a id="download" hidden>Save signed APK</a></section><small id="digest"></small><p><small>No internet, server, extension, or installation is needed to join the files. Allow roughly three times the APK size in free browser memory. If your phone runs out of memory, join on a computer and copy the resulting APK to it.</small></p></main>
+<style>body{background:#101524;color:#edf5f4;font:17px/1.6 system-ui;margin:0}main{max-width:760px;margin:6vh auto;padding:20px}h1{font-size:clamp(30px,8vw,42px);line-height:1.15}em{font-style:normal;color:#63f5c8}section{background:#1c2637;border:1px solid #354356;border-radius:20px;padding:22px;margin:24px 0}button,a{display:inline-block;background:#63f5c8;color:#10231d;border:0;border-radius:10px;padding:13px 20px;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.45;cursor:wait}button.secondary{background:#354356;color:#edf5f4}input{max-width:100%;padding:12px 0}small{overflow-wrap:anywhere;color:#b3c5ce}#status{white-space:pre-wrap}a[hidden]{display:none}label{display:block;font-weight:650}li{margin:8px 0}progress{width:100%;accent-color:#63f5c8}#selected{overflow-wrap:anywhere}#selected li{font-size:14px;margin:2px 0}</style>
+<main><p><em>SHONENZ+</em> / RELEASE TOOLS</p><h1>Your APK.<br>Joined <em>entirely offline.</em></h1><p>These are pieces of one signed APK, not Android split-install packages. Download every part and this HTML file, then open this file in a full browser.</p><section><ol><li>Choose the <strong>.part</strong> files below. Select them together or add them one at a time, in any order.</li><li>Press <strong>Verify &amp; join APK</strong>. The joiner checks the contents of every part.</li><li>Tap <strong>Save signed APK</strong>, then open it on your Android device.</li></ol><label for="parts">Add APK parts</label><input id="parts" type="file" multiple><p id="selection" aria-live="polite">No files added yet.</p><ul id="selected"></ul><p><button id="join" type="button">Verify &amp; join APK</button> <button id="reset" type="button" class="secondary">Clear files</button></p><progress id="progress" value="0" max="1"></progress><p id="status" role="status" aria-live="polite">Ready. No files leave your device.</p><a id="download" hidden>Save signed APK</a></section><small id="digest"></small><p><small>No internet, server, extension, or installation is needed to join the files. Open this HTML file in a browser such as Chrome or Firefox, rather than a text viewer. If your phone cannot save the result, join on a computer and copy the APK to it.</small></p></main>
 <script>
 'use strict';
 const manifest=__MANIFEST__;
-// A local SHA-256 fallback supports file:// browsers without Web Crypto.
-function sha256Fallback(bytes){
- const K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
- const H=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
- const data=new Uint8Array(Math.ceil((bytes.length+9)/64)*64);data.set(bytes);data[bytes.length]=128;
- const view=new DataView(data.buffer);view.setUint32(data.length-8,Math.floor(bytes.length/0x20000000));view.setUint32(data.length-4,(bytes.length*8)>>>0);
- const rotate=(v,n)=>(v>>>n)|(v<<(32-n)),w=new Uint32Array(64);
- for(let offset=0;offset<data.length;offset+=64){
-  for(let i=0;i<16;i++)w[i]=view.getUint32(offset+i*4);
-  for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2];w[i]=(w[i-16]+(rotate(x,7)^rotate(x,18)^(x>>>3))+w[i-7]+(rotate(y,17)^rotate(y,19)^(y>>>10)))>>>0;}
-  let [a,b,c,d,e,f,g,h]=H;
-  for(let i=0;i<64;i++){const t1=(h+(rotate(e,6)^rotate(e,11)^rotate(e,25))+((e&f)^((~e)&g))+K[i]+w[i])>>>0;const t2=((rotate(a,2)^rotate(a,13)^rotate(a,22))+((a&b)^(a&c)^(b&c)))>>>0;h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;}
-  [a,b,c,d,e,f,g,h].forEach((v,i)=>H[i]=(H[i]+v)>>>0);
+// Incremental SHA-256 avoids loading the full file into JavaScript memory and
+// also works in offline file:// contexts where Web Crypto may be unavailable.
+class Sha256 {
+ constructor(){
+  this.h=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  this.pending=new Uint8Array(64);this.used=0;this.length=0;this.w=new Uint32Array(64);
  }
- return Array.from(H,v=>v.toString(16).padStart(8,'0')).join('');
+ block(data,offset){
+  const K=Sha256.K,w=this.w,h=this.h,rot=(v,n)=>(v>>>n)|(v<<(32-n));
+  for(let i=0;i<16;i++){let j=offset+i*4;w[i]=((data[j]<<24)|(data[j+1]<<16)|(data[j+2]<<8)|data[j+3])>>>0;}
+  for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2];w[i]=(w[i-16]+(rot(x,7)^rot(x,18)^(x>>>3))+w[i-7]+(rot(y,17)^rot(y,19)^(y>>>10)))>>>0;}
+  let [a,b,c,d,e,f,g,z]=h;
+  for(let i=0;i<64;i++){const t1=(z+(rot(e,6)^rot(e,11)^rot(e,25))+((e&f)^((~e)&g))+K[i]+w[i])>>>0;const t2=((rot(a,2)^rot(a,13)^rot(a,22))+((a&b)^(a&c)^(b&c)))>>>0;z=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;}
+  [a,b,c,d,e,f,g,z].forEach((v,i)=>h[i]=(h[i]+v)>>>0);
+ }
+ update(data){
+  this.length+=data.length;let offset=0;
+  if(this.used){const count=Math.min(64-this.used,data.length);this.pending.set(data.subarray(0,count),this.used);this.used+=count;offset=count;if(this.used===64){this.block(this.pending,0);this.used=0;}}
+  while(offset+64<=data.length){this.block(data,offset);offset+=64;}
+  if(offset<data.length){this.pending.set(data.subarray(offset),0);this.used=data.length-offset;}
+  return this;
+ }
+ hex(){
+  const size=this.length,tail=new Uint8Array(this.used<56?64:128);tail.set(this.pending.subarray(0,this.used));tail[this.used]=0x80;
+  const view=new DataView(tail.buffer);view.setUint32(tail.length-8,Math.floor(size/0x20000000));view.setUint32(tail.length-4,(size*8)>>>0);
+  for(let i=0;i<tail.length;i+=64)this.block(tail,i);
+  return Array.from(this.h,v=>v.toString(16).padStart(8,'0')).join('');
+ }
 }
-async function digest(buffer){
- if(globalThis.crypto?.subtle)return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),v=>v.toString(16).padStart(2,'0')).join('');
- return sha256Fallback(new Uint8Array(buffer));
-}
+Sha256.K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
 const byId=id=>document.getElementById(id);
+const choose=byId('parts'),join=byId('join'),reset=byId('reset'),download=byId('download');
+let files=[],objectUrl;
 byId('digest').textContent=`${manifest.filename} · ${(manifest.size/1048576).toFixed(1)} MiB · ${manifest.parts.length} parts\nSHA-256: ${manifest.sha256}`;
-let objectUrl;
-byId('join').addEventListener('click',async()=>{
- byId('join').disabled=true;byId('download').hidden=true;byId('progress').value=0;
- if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=undefined;}
+function clearDownload(){if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=undefined;}download.hidden=true;download.removeAttribute('href');}
+function showFiles(){
+ byId('selection').textContent=`${files.length} file${files.length===1?'':'s'} added; ${manifest.parts.length} different parts needed.`;
+ const list=byId('selected');list.textContent='';for(const file of files){const li=document.createElement('li');li.textContent=file.name;list.appendChild(li);}
+}
+choose.addEventListener('change',()=>{
+ for(const file of Array.from(choose.files))if(!files.some(f=>f.name===file.name&&f.size===file.size&&f.lastModified===file.lastModified))files.push(file);
+ choose.value='';clearDownload();showFiles();byId('progress').value=0;byId('status').textContent='Files stay on your device. Add any remaining parts, then press Verify & join APK.';
+});
+reset.addEventListener('click',()=>{files=[];choose.value='';clearDownload();showFiles();byId('progress').value=0;byId('status').textContent='Files cleared. Add the parts again.';});
+function readSlice(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(new Uint8Array(reader.result));reader.onerror=()=>reject(Error('Could not read a selected file. Choose it again, or download it again.'));reader.onabort=()=>reject(Error('Reading the selected file was interrupted.'));reader.readAsArrayBuffer(blob);});}
+async function hashFile(file,hasher,onProgress){
+ const chunkSize=1024*1024;
+ for(let offset=0;offset<file.size;offset+=chunkSize){const data=await readSlice(file.slice(offset,Math.min(offset+chunkSize,file.size)));hasher.update(data);onProgress(data.length);await new Promise(resolve=>setTimeout(resolve,0));}
+}
+join.addEventListener('click',async()=>{
+ join.disabled=reset.disabled=choose.disabled=true;clearDownload();byId('progress').value=0;
  try{
-  const files=Array.from(byId('parts').files),map=new Map(files.map(f=>[f.name,f]));
-  if(files.length!==manifest.parts.length||map.size!==files.length)throw Error(`Select exactly ${manifest.parts.length} different parts.`);
-  const buffers=[];
-  for(let i=0;i<manifest.parts.length;i++){
-   const part=manifest.parts[i],file=map.get(part.name);
-   if(!file)throw Error(`Missing ${part.name}. Keep the original filenames.`);
-   if(file.size!==part.size)throw Error(`Incorrect size: ${part.name}. Download that part again.`);
-   byId('status').textContent=`Checking ${i+1}/${manifest.parts.length}: ${part.name}`;
-   await new Promise(resolve=>setTimeout(resolve,0));
-   const data=await file.arrayBuffer();
-   if(await digest(data)!==part.sha256)throw Error(`Checksum mismatch: ${part.name}. Download that part again.`);
-   buffers.push(data);byId('progress').value=(i+1)/(manifest.parts.length+1);
+  if(!files.length)throw Error(`Add all ${manifest.parts.length} parts first.`);
+  const matched=new Map();let checked=0;const total=files.reduce((n,f)=>n+f.size,0)+manifest.size;
+  for(const file of files){
+   byId('status').textContent=`Checking ${file.name}…`;
+   if(!manifest.parts.some(p=>p.size===file.size))throw Error(`${file.name} has the wrong size. Check that all downloads finished, then clear and select the correct parts.`);
+   const hash=new Sha256();await hashFile(file,hash,n=>{checked+=n;byId('progress').value=checked/total;});
+   const fileHash=hash.hex(),part=manifest.parts.find(p=>p.size===file.size&&p.sha256===fileHash);
+   if(!part)throw Error(`${file.name} does not match a release part. Clear the list and download that part again.`);
+   if(matched.has(part.name))throw Error(`${file.name} is a duplicate of ${part.name}. Clear the list and select each different part once.`);
+   matched.set(part.name,file);
   }
-  const blob=new Blob(buffers,{type:manifest.mime||'application/vnd.android.package-archive'});
+  const missing=manifest.parts.filter(p=>!matched.has(p.name));
+  if(missing.length)throw Error(`Still needed: ${missing.map(p=>p.name).join(', ')}. Add the missing parts and try again.`);
+  const ordered=manifest.parts.map(p=>matched.get(p.name)),whole=new Sha256();
   byId('status').textContent='Checking the complete APK…';
-  if(blob.size!==manifest.size||await digest(await blob.arrayBuffer())!==manifest.sha256)throw Error('The complete APK checksum does not match.');
-  objectUrl=URL.createObjectURL(blob);byId('download').href=objectUrl;byId('download').download=manifest.filename;byId('download').hidden=false;
-  byId('progress').value=1;byId('status').textContent='Verified. The reconstructed APK matches the signed release byte for byte.';
- }catch(error){byId('status').textContent=error.message||String(error);}finally{byId('join').disabled=false;}
+  for(const file of ordered)await hashFile(file,whole,n=>{checked+=n;byId('progress').value=checked/total;});
+  const blob=new Blob(ordered,{type:manifest.mime||'application/vnd.android.package-archive'});
+  if(blob.size!==manifest.size||whole.hex()!==manifest.sha256)throw Error('The complete APK checksum does not match. Download the parts again.');
+  objectUrl=URL.createObjectURL(blob);download.href=objectUrl;download.download=manifest.filename;download.hidden=false;
+  byId('progress').value=1;byId('status').textContent='Verified. Tap Save signed APK below.';
+ }catch(error){byId('status').textContent=error.message||String(error);}finally{join.disabled=reset.disabled=choose.disabled=false;}
 });
 </script></html>
