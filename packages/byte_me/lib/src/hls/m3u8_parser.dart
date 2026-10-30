@@ -149,12 +149,22 @@ class M3u8Parser {
     dynamic lastError;
     for (int i = 0; i < 3; i++) {
       try {
-        final request = await client.getUrl(Uri.parse(url));
+        final request = await client
+            .getUrl(Uri.parse(url))
+            .timeout(const Duration(seconds: 20));
         headers.forEach((k, v) => request.headers.set(k, v));
-        final response = await request.close();
+        final response = await request.close().timeout(
+          const Duration(seconds: 30),
+        );
         if (response.statusCode == 200) {
           final chunks = <List<int>>[];
-          await for (final chunk in response) {
+          var received = 0;
+          await for (final chunk in response.timeout(
+            const Duration(seconds: 30),
+          )) {
+            received += chunk.length;
+            if (received > 8 * 1024 * 1024)
+              throw const FormatException('Playlist or key exceeds 8 MiB');
             chunks.add(chunk);
           }
           final totalLength = chunks.fold<int>(0, (s, c) => s + c.length);

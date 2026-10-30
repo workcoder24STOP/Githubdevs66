@@ -1,3 +1,8 @@
+import 'package:shonenx/features/offline/offline_catalog.dart';
+import 'package:shonenx/features/offline/open_download.dart';
+import 'package:shonenx/features/downloads/providers/download_provider.dart';
+import 'package:shonenx/features/downloads/domain/models/download_task.dart';
+import 'package:shonenx/features/discovery/presentation/widgets/sheets/download_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -77,6 +82,8 @@ class EpisodeListPanel extends ConsumerStatefulWidget {
 
 class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
   bool _descending = false;
+  String? _scanlatorFilter;
+  bool _sortByScanlator = false;
   int _chunkIndex = 0;
   int? _selectedSeason;
   final ScrollController _scrollController = ScrollController();
@@ -531,30 +538,45 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
 
         final safeIdx = _chunkIndex < chunks.length ? _chunkIndex : 0;
         final activeChunk = chunks[safeIdx];
-        final prefScanlator = ref.read(
+        final prefScanlator = ref.watch(
           preferredScanlatorProvider(widget.media.id),
         );
 
-        // 5. Single-pass Deduplication & Chunk Filtering
-        final dedupedMap = <double, UnifiedEpisode>{};
-
-        for (final ep in seasonEpisodes) {
-          if (activeChunk.min != null &&
-              (ep.number < activeChunk.min! || ep.number > activeChunk.max!)) {
-            continue;
-          }
-          if (!dedupedMap.containsKey(ep.number) ||
-              ep.scanlator == prefScanlator) {
-            dedupedMap[ep.number] = ep;
+        final scanlators =
+            seasonEpisodes
+                .map((e) => e.scanlator ?? '')
+                .where((s) => s.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+        final filtered = seasonEpisodes.where(
+          (ep) =>
+              (_scanlatorFilter == null || ep.scanlator == _scanlatorFilter) &&
+              (activeChunk.min == null ||
+                  (ep.number >= activeChunk.min! &&
+                      ep.number <= activeChunk.max!)),
+        );
+        // Preserve every release when sorting by scanlator. Otherwise pick one
+        // release per number, preferring the user's persistent group choice.
+        final dedupedMap = <String, UnifiedEpisode>{};
+        for (final ep in filtered) {
+          final key = _sortByScanlator ? ep.id : '${ep.number}';
+          if (!dedupedMap.containsKey(key) || ep.scanlator == prefScanlator) {
+            dedupedMap[key] = ep;
           }
         }
-
         final finalEpisodes = dedupedMap.values.toList()
-          ..sort(
-            (a, b) => _descending
+          ..sort((a, b) {
+            if (_sortByScanlator) {
+              final group = (a.scanlator ?? '').toLowerCase().compareTo(
+                (b.scanlator ?? '').toLowerCase(),
+              );
+              if (group != 0) return group;
+            }
+            return _descending
                 ? b.number.compareTo(a.number)
-                : a.number.compareTo(b.number),
-          );
+                : a.number.compareTo(b.number);
+          });
 
         int staggerIndex = 2;
         final cs = Theme.of(context).colorScheme;
@@ -649,6 +671,67 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.media.type == MediaType.MANGA && scanlators.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    PopupMenuButton<String>(
+                      tooltip: 'Filter scanlator',
+                      onSelected: (value) => setState(() {
+                        _scanlatorFilter = value.isEmpty ? null : value;
+                        _chunkIndex = 0;
+                      }),
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: '',
+                          child: Text('All scanlators'),
+                        ),
+                        for (final group in scanlators)
+                          PopupMenuItem(value: group, child: Text(group)),
+                      ],
+                      child: Chip(
+                        label: Text(_scanlatorFilter ?? 'All scanlators'),
+                        avatar: const Icon(Icons.filter_list, size: 18),
+                      ),
+                    ),
+                    FilterChip(
+                      label: const Text('Sort by scanlator'),
+                      selected: _sortByScanlator,
+                      onSelected: (value) =>
+                          setState(() => _sortByScanlator = value),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Preferred scanlator',
+                      onSelected: (value) => ref
+                          .read(
+                            preferredScanlatorProvider(
+                              widget.media.id,
+                            ).notifier,
+                          )
+                          .setPreferred(value.isEmpty ? null : value),
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: '',
+                          child: Text('No preference'),
+                        ),
+                        for (final group in scanlators)
+                          PopupMenuItem(value: group, child: Text(group)),
+                      ],
+                      child: Chip(
+                        label: Text(
+                          prefScanlator == null
+                              ? 'Preferred group'
+                              : 'Prefer: $prefScanlator',
+                        ),
+                        avatar: const Icon(Icons.star_border, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             StaggeredFadeIn(
               index: staggerIndex++,
               child: Padding(
@@ -700,7 +783,8 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (!widget.isTv) ...[
-                          if (widget.media.type == MediaType.ANIME &&
+                          if ((widget.media.type == MediaType.ANIME ||
+                                  widget.media.type == MediaType.MANGA) &&
                               finalEpisodes.isNotEmpty)
                             IconButton(
                               onPressed: () => BatchDownloadSheet.show(
@@ -811,6 +895,8 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
       );
     }
 
+    final downloads =
+        ref.watch(downloadTasksProvider).value ?? <DownloadTask>[];
     return LayoutBuilder(
       builder: (context, constraints) {
         final panelWidth = constraints.maxWidth;
@@ -942,14 +1028,57 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
           final isWatched =
               effectiveWatchedProgress >= ep.number ||
               historyWatchedSet.contains(ep.number);
-          final actions =
-              widget.episodeActionsBuilder?.call(
-                context,
-                ep,
-                isCurrent,
-                isWatched,
-              ) ??
-              const [];
+          final actions = <Widget>[
+            ...?widget.episodeActionsBuilder?.call(
+              context,
+              ep,
+              isCurrent,
+              isWatched,
+            ),
+            if (widget.media.type == MediaType.MANGA ||
+                widget.media.type == MediaType.ANIME)
+              Builder(
+                builder: (context) {
+                  final local = OfflineCatalog.forEpisode(
+                    downloads,
+                    widget.media,
+                    source,
+                    ep,
+                  );
+                  final ready = local?.status == DownloadStatus.completed;
+                  return IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: ready
+                        ? 'Open downloaded ${widget.media.type == MediaType.MANGA ? 'chapter' : 'episode'}'
+                        : (local?.status.name ?? 'Download'),
+                    icon: Icon(
+                      ready
+                          ? Icons.offline_pin
+                          : local == null
+                          ? Icons.download_outlined
+                          : Icons.downloading,
+                      size: 20,
+                    ),
+                    onPressed: () => ready
+                        ? openDownload(context, local!)
+                        : DownloadSheet.show(context, ep, source, widget.media),
+                  );
+                },
+              ),
+          ];
+          void openEpisode() {
+            final local = OfflineCatalog.forEpisode(
+              downloads,
+              widget.media,
+              source,
+              ep,
+            );
+            if (local?.status == DownloadStatus.completed) {
+              openDownload(context, local!);
+            } else {
+              widget.onEpisodeTap(ep, source);
+            }
+          }
 
           switch (viewMode) {
             case EpisodeViewMode.classic:
@@ -965,7 +1094,7 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                 isFiller: ep.isFiller,
                 fallbackThumbnailUrl: fallbackThumbnailUrl,
                 actions: actions,
-                onTap: () => widget.onEpisodeTap(ep, source),
+                onTap: openEpisode,
               );
             case EpisodeViewMode.compact:
               return EpisodeCompactTile(
@@ -976,7 +1105,7 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                 isFiller: ep.isFiller,
                 fallbackThumbnailUrl: fallbackThumbnailUrl,
                 actions: actions,
-                onTap: () => widget.onEpisodeTap(ep, source),
+                onTap: openEpisode,
               );
             case EpisodeViewMode.cover:
               return EpisodeCoverTile(
@@ -987,7 +1116,7 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                 isFiller: ep.isFiller,
                 fallbackThumbnailUrl: fallbackThumbnailUrl,
                 actions: actions,
-                onTap: () => widget.onEpisodeTap(ep, source),
+                onTap: openEpisode,
               );
             case EpisodeViewMode.grid:
               return EpisodeGridTile(
@@ -998,7 +1127,7 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                 isFiller: ep.isFiller,
                 fallbackThumbnailUrl: fallbackThumbnailUrl,
                 actions: actions,
-                onTap: () => widget.onEpisodeTap(ep, source),
+                onTap: openEpisode,
               );
             case EpisodeViewMode.box:
               return EpisodeBoxTile(
@@ -1008,7 +1137,7 @@ class _EpisodeListPanelState extends ConsumerState<EpisodeListPanel> {
                 isFiller: ep.isFiller,
                 isWatched: isWatched,
                 fallbackThumbnailUrl: fallbackThumbnailUrl,
-                onTap: () => widget.onEpisodeTap(ep, source),
+                onTap: openEpisode,
               );
           }
         }

@@ -42,6 +42,8 @@ class OfflineCatalog {
     task.sourceBaseUrl = source.baseUrl ?? '';
     task.itemId = episode.id;
     task.itemTitle = episode.title ?? '';
+    task.scanlator = episode.scanlator ?? '';
+    task.externalIdsJson = jsonEncode(media.externalIds.toMap());
     task.season = episode.season ?? 1;
     task.episodeNumber = episode.number;
     task.isManga = media.type == MediaType.MANGA;
@@ -51,6 +53,55 @@ class OfflineCatalog {
         '${task.catalogKey}${p.extension(task.savePath)}',
       );
     }
+  }
+
+  /// Match explicit identifiers only. Similar titles and episode numbers alone
+  /// are insufficient evidence to attach an offline file to another title.
+  static bool belongsToMedia(DownloadTask task, UnifiedMedia media) {
+    if (task.isManga != (media.type == MediaType.MANGA)) return false;
+    if (task.mediaId == media.id &&
+        (media.sourceId == null || task.sourceId == media.sourceId)) {
+      return true;
+    }
+    final legacyKey = key([
+      media.type.id,
+      media.id,
+      media.externalIds.anilist,
+      media.externalIds.mal,
+      media.externalIds.kitsu,
+    ]);
+    if (task.titleKey == legacyKey) return true;
+    try {
+      final ids = (jsonDecode(task.externalIdsJson) as Map)
+          .cast<String, dynamic>();
+      return media.externalIds.toMap().entries.any(
+        (e) =>
+            e.value != null &&
+            e.value.toString().isNotEmpty &&
+            ids[e.key] == e.value,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static DownloadTask? forEpisode(
+    Iterable<DownloadTask> tasks,
+    UnifiedMedia media,
+    SourceInfo source,
+    UnifiedEpisode episode,
+  ) {
+    final key = itemKey(media, source, episode);
+    return tasks
+        .where(
+          (t) =>
+              belongsToMedia(t, media) &&
+              (t.catalogKey == key ||
+                  (t.sourceId == source.id &&
+                      t.itemId == episode.id &&
+                      t.season == (episode.season ?? 1))),
+        )
+        .firstOrNull;
   }
 
   static Future<Directory> storage() async {

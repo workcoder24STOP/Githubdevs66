@@ -30,7 +30,9 @@ class DownloadEngine {
     String? lastError;
 
     while (true) {
-      if (task.status == DownloadStatus.cancelled) return;
+      if (task.status == DownloadStatus.cancelled ||
+          task.status == DownloadStatus.paused)
+        return;
       attempts++;
       task.updateStatus(DownloadStatus.downloading);
 
@@ -50,13 +52,32 @@ class DownloadEngine {
           await file.parent.create(recursive: true);
         }
 
-        final request = await _client.getUrl(url);
+        final request = await _client
+            .getUrl(url)
+            .timeout(const Duration(seconds: 20));
+        task.attachCancelCallback(() => request.abort());
+        if (task.status == DownloadStatus.cancelled ||
+            task.status == DownloadStatus.paused) {
+          request.abort();
+          return;
+        }
         reqHeaders.forEach((k, v) => request.headers.set(k, v));
-        final response = await request.close();
+        final response = await request.close().timeout(
+          const Duration(seconds: 30),
+        );
 
-        // 416 = Range Not Satisfiable → file is already complete
+        // A 416 is only completion when the server confirms the exact size.
         if (response.statusCode == 416) {
+          final range = response.headers.value('content-range');
+          final match = RegExp(r'^bytes \*/(\d+)$').firstMatch(range ?? '');
           await response.drain<void>();
+          if (existingBytes == 0 ||
+              match == null ||
+              int.parse(match[1]!) != existingBytes) {
+            throw _PermanentError(
+              'Cannot safely resume this file: server size differs. Delete the download and start again.',
+            );
+          }
           task.updateProgress(
             DownloadProgress(
               receivedBytes: existingBytes,
@@ -101,14 +122,38 @@ class DownloadEngine {
           );
         }
 
+        if (response.statusCode != 200 && response.statusCode != 206) {
+          await response.drain<void>();
+          throw _PermanentError(
+            'Unexpected download response: HTTP ${response.statusCode}',
+          );
+        }
         final isResuming = response.statusCode == 206;
+        int? rangeTotal;
+        if (isResuming) {
+          final match = RegExp(
+            r'^bytes (\d+)-(\d+)/(\d+)$',
+          ).firstMatch(response.headers.value('content-range') ?? '');
+          if (match == null ||
+              int.parse(match[1]!) != existingBytes ||
+              int.parse(match[2]!) < existingBytes ||
+              int.parse(match[3]!) <= int.parse(match[2]!)) {
+            await response.drain<void>();
+            throw _PermanentError(
+              'Server returned an inconsistent resume range. Delete the partial download and retry.',
+            );
+          }
+          rangeTotal = int.parse(match[3]!);
+        }
         int received = isResuming ? existingBytes : 0;
         final contentLength = response.contentLength == -1
             ? null
             : response.contentLength;
-        final total = contentLength != null
-            ? (isResuming ? contentLength + existingBytes : contentLength)
-            : null;
+        final total =
+            rangeTotal ??
+            (contentLength != null
+                ? (isResuming ? contentLength + existingBytes : contentLength)
+                : null);
 
         final sink = file.openWrite(
           mode: isResuming ? FileMode.append : FileMode.write,
@@ -117,7 +162,9 @@ class DownloadEngine {
         task.attachCancelCallback(() => request.abort());
 
         try {
-          await for (final chunk in response) {
+          await for (final chunk in response.timeout(
+            const Duration(seconds: 30),
+          )) {
             if (task.status == DownloadStatus.cancelled ||
                 task.status == DownloadStatus.paused) {
               break;
@@ -155,6 +202,15 @@ class DownloadEngine {
             return;
           }
 
+          if (received == 0 ||
+              (total != null &&
+                  received != total &&
+                  response.compressionState !=
+                      HttpClientResponseCompressionState.decompressed)) {
+            throw HttpException(
+              'Incomplete download: received $received of $total bytes',
+            );
+          }
           // Final 100% progress
           task.updateProgress(
             DownloadProgress(
@@ -175,7 +231,9 @@ class DownloadEngine {
           rethrow;
         }
       } catch (e) {
-        if (task.status == DownloadStatus.cancelled) return;
+        if (task.status == DownloadStatus.cancelled ||
+            task.status == DownloadStatus.paused)
+          return;
         lastError = _friendlyErrorMessage(e);
 
         // Permanent errors and retry exhaustion → fail

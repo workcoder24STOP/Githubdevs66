@@ -45,6 +45,7 @@ class _OfflineReaderState extends ConsumerState<OfflineReader> {
   }
 
   void save(int value) {
+    if (!mounted) return;
     setState(() => page = value);
     ref
         .read(downloadRepositoryProvider)
@@ -103,7 +104,7 @@ class _OfflineReaderState extends ConsumerState<OfflineReader> {
       );
       return;
     }
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context, rootNavigator: true).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => OfflineReader(task: chapters[index]),
       ),
@@ -169,7 +170,7 @@ class _OfflineReaderState extends ConsumerState<OfflineReader> {
       body: FutureBuilder<bool>(
         future: available,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.data != true) {
@@ -180,13 +181,15 @@ class _OfflineReaderState extends ConsumerState<OfflineReader> {
             );
           }
           if (prefs.direction == ReaderDirection.webtoon) {
-            return ReaderWebtoonView(
-              key: webtoon,
-              pages: pages,
-              initialPage: page,
-              scaleType: ReaderScaleType.fitWidth,
-              textColor: Theme.of(context).colorScheme.onSurface,
-              onPageChanged: save,
+            return SizedBox.expand(
+              child: ReaderWebtoonView(
+                key: webtoon,
+                pages: pages,
+                initialPage: page,
+                scaleType: ReaderScaleType.fitWidth,
+                textColor: Theme.of(context).colorScheme.onSurface,
+                onPageChanged: save,
+              ),
             );
           }
           return ReaderPageView(

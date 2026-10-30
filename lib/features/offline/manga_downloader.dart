@@ -1,4 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
+import 'package:shonenx/source_engine/models/chapter_page.dart';
+import 'package:shonenx/core/network/session_manager.dart';
+import 'package:shonenx/core/network/network_config.dart';
+import 'package:shonenx/core/utils/image_headers.dart';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:shonenx/features/downloads/domain/download_repository.dart';
@@ -8,6 +13,8 @@ import 'package:shonenx/features/downloads/domain/models/download_task.dart';
 class MangaDownloader {
   final DownloadTask task;
   final DownloadRepository repo;
+  final Future<List<ChapterPage>> Function()? resolvePages;
+  final _stopped = Completer<void>();
   bool _paused = false;
   bool _cancelled = false;
   bool get paused => _paused;
@@ -17,18 +24,56 @@ class MangaDownloader {
   }
 
   HttpClient? _client;
-  MangaDownloader(this.task, this.repo);
+  MangaDownloader(this.task, this.repo, {this.resolvePages});
   void pause() {
     _paused = true;
+    if (!_stopped.isCompleted) _stopped.complete();
     _client?.close(force: true);
   }
 
   Future<void> run() async {
     if (_cancelled) return;
-    final pages = (jsonDecode(task.pagesJson) as List)
-        .cast<Map<String, dynamic>>();
-    _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
     try {
+      if (_paused) return;
+      if (resolvePages != null) {
+        final fresh = await Future.any<List<ChapterPage>>([
+          resolvePages!(),
+          _stopped.future.then((_) => throw StateError('Download stopped')),
+        ]);
+        if (_paused) return;
+        if (fresh.isEmpty) throw StateError('Source returned no chapter pages');
+        // Preserve all URL components: query parameters may identify pages.
+        // A changed list cannot safely reuse indexed files from another list.
+        String identity(String value) {
+          var uri = Uri.parse(value);
+          final upstream = uri.queryParameters['imageUrl'];
+          if (upstream != null) uri = Uri.parse(upstream);
+          return uri.replace(fragment: '').toString();
+        }
+
+        final previous = (jsonDecode(task.pagesJson) as List)
+            .map((p) => identity(p['url'] as String))
+            .toList();
+        final next = fresh.map((p) => identity(p.url)).toList();
+        if (previous.isNotEmpty &&
+            (previous.length != next.length ||
+                List.generate(
+                  next.length,
+                  (i) => i,
+                ).any((i) => previous[i] != next[i]))) {
+          final folder = Directory(task.savePath);
+          if (await folder.exists()) await folder.delete(recursive: true);
+          task.localPages = [];
+          task.progress = 0;
+        }
+        task.pagesJson = jsonEncode(
+          fresh.map((p) => {'url': p.url, 'headers': p.headers}).toList(),
+        );
+      }
+      final pages = (jsonDecode(task.pagesJson) as List)
+          .cast<Map<String, dynamic>>();
+      if (pages.isEmpty) throw StateError('No pages to download');
+      _client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
       await Directory(task.savePath).create(recursive: true);
       task.status = DownloadStatus.downloading;
       task.errorReason = null;
@@ -40,13 +85,23 @@ class MangaDownloader {
         final file = File(
           p.join(task.savePath, '${i.toString().padLeft(6, '0')}.image'),
         );
-        if (!await file.exists() || await file.length() == 0) {
+        var valid = false;
+        if (await file.exists() && await file.length() > 0) {
+          final handle = await file.open();
+          try {
+            valid = _isImage(await handle.read(16));
+          } finally {
+            await handle.close();
+          }
+        }
+        if (!valid) {
           final partial = File('${file.path}.part');
           Object? lastError;
           for (var attempt = 0; attempt < 3; attempt++) {
             if (_paused) break;
             try {
-              final uri = Uri.parse(pages[i]['url'] as String);
+              final rawUrl = pages[i]['url'] as String;
+              final uri = Uri.parse(rawUrl.split('#').first);
               if (uri.scheme != 'https' && uri.scheme != 'http') {
                 throw StateError('Unsupported page URI');
               }
@@ -55,7 +110,18 @@ class MangaDownloader {
                   .timeout(const Duration(seconds: 20));
               final headers =
                   (pages[i]['headers'] as Map?)?.cast<String, String>() ?? {};
-              headers.forEach(request.headers.set);
+              final session = SessionManager();
+              final cookies = session.getCookiesSync(uri.toString());
+              final merged = <String, String>{
+                'User-Agent':
+                    session.getUserAgentSync(uri.toString()) ??
+                    NetworkConfig.globalUserAgent,
+                if (cookies.isNotEmpty) 'Cookie': cookies,
+                ...NetworkConfig.globalHeaders,
+                ...headers,
+                ...decodeUrlHeaders(rawUrl),
+              };
+              merged.forEach(request.headers.set);
               final response = await request.close().timeout(
                 const Duration(seconds: 30),
               );
@@ -82,7 +148,9 @@ class MangaDownloader {
                 await sink.close();
               }
               if (size == 0 ||
-                  (response.contentLength >= 0 &&
+                  (response.compressionState !=
+                          HttpClientResponseCompressionState.decompressed &&
+                      response.contentLength >= 0 &&
                       size != response.contentLength)) {
                 throw StateError('Incomplete page ${i + 1}');
               }

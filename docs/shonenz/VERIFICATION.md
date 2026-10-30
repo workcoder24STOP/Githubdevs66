@@ -1,3 +1,45 @@
+# Update verification — 2026-10-30, version 0.2.1
+
+The update uses the same application ID and private signing key as 0.2.0.
+Heavy player/codec/soak testing was outside the requested manga-focused checks.
+
+## Checks performed for this update
+
+- Full application static analysis: no issues.
+- Isar schema generation completed for added scanlator/external-ID metadata.
+- Seventeen focused checks passed: local Webtoon layout and final-page resume,
+  offline RTL paging, visible damaged-image errors, manga checkpoints/corrupt-page
+  recovery, paused queues, empty-page rejection, anime HTTP range validation,
+  encrypted HLS retry, exact title/source/release matching, scanlator preference
+  persistence, and five extension catalog/matching/index contracts.
+- Two additional title-navigation widget checks passed: manga opens on the
+  root navigator above the shell; an anime title passes the correct saved file,
+  task ID, subtitle language and resume position to the player route. The anime
+  fixture tests routing only, not video decoding.
+- An initial encrypted HLS check exposed an isolate closure capturing an
+  unsendable HttpClient. The worker was repaired and the test passed.
+- Fresh live Kagane 1.6.37 search on this turn returned an empty list with
+  `HTTP error 404`. A new real chapter transfer could not be verified. The earlier
+  passing Kagane result below is historical, not a current availability claim.
+- Signed ARM64 release compilation passed (248.3 seconds); aapt reports version
+  0.2.1/code 2002, and apksigner verified the same RSA4096/v2 certificate as 0.2.0.
+- The following historical source/device results are retained as dated evidence;
+  they do not establish acceptance of the new Android binary.
+
+## Device acceptance still required
+
+The sandbox has no hardware virtualization and its prior software emulator
+became unresponsive with Android SystemUI ANRs. Version 0.2.1 has not been
+installed or exercised on a responsive Android device. Verify an in-place update,
+existing downloads, Webtoon scrolling, offline chapter navigation, manga/anime
+batch controls, subtitle playback and background resume on your phone.
+Widget and transfer checks establish specific behavior, not complete device
+acceptance. Damaged or missing old downloaded images must be downloaded again.
+
+---
+
+## Historical 0.2.0 evidence
+
 # Verification status — 2026-10-29
 
 This is a development build, not a claim that every item in the master prompt has

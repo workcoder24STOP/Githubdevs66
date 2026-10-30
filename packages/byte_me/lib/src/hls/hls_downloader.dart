@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
@@ -33,6 +34,9 @@ class HlsDownloader {
     final effectiveHeaders = headers ?? {};
     final effectiveRemuxer = remuxer ?? const ConcatRemuxer();
 
+    if (task.status == DownloadStatus.cancelled ||
+        task.status == DownloadStatus.paused)
+      return;
     task.updateStatus(DownloadStatus.downloading);
 
     // Deterministic temp directory based on task ID so downloaded segments survive pauses and failures
@@ -45,6 +49,11 @@ class HlsDownloader {
     bool cancelled = false;
     Completer<void>? pauseCompleter;
 
+    task.attachCancelCallback(() {
+      cancelled = true;
+      if (pauseCompleter != null && !pauseCompleter!.isCompleted)
+        pauseCompleter!.complete();
+    });
     try {
       // Parse playlist
       final segments = await M3u8Parser.parse(
@@ -53,7 +62,19 @@ class HlsDownloader {
         _client,
       );
 
+      if (cancelled ||
+          task.status == DownloadStatus.paused ||
+          task.status == DownloadStatus.cancelled)
+        throw _CancelledException();
       if (segments.isEmpty) throw StateError('Empty HLS playlist');
+      final identity = jsonEncode(segments.map((s) => s.url).toList());
+      final indexFile = File(p.join(tempDir.path, 'playlist.json'));
+      if (!await indexFile.exists() ||
+          await indexFile.readAsString() != identity) {
+        await tempDir.delete(recursive: true);
+        await tempDir.create(recursive: true);
+        await indexFile.writeAsString(identity, flush: true);
+      }
 
       // Download state
       int completedCount = 0;
@@ -99,7 +120,8 @@ class HlsDownloader {
       // Cancel/pause wiring
       task.attachCancelCallback(() {
         cancelled = true;
-        pauseCompleter?.complete();
+        if (pauseCompleter != null && !pauseCompleter!.isCompleted)
+          pauseCompleter!.complete();
       });
 
       // Concurrent segment download using worker pool pattern
@@ -212,7 +234,8 @@ class HlsDownloader {
       task.attachResumeCallback(() {
         if (task.status == DownloadStatus.paused) {
           task.updateStatus(DownloadStatus.downloading);
-          pauseCompleter?.complete();
+          if (pauseCompleter != null && !pauseCompleter!.isCompleted)
+            pauseCompleter!.complete();
         }
       });
 
@@ -227,24 +250,13 @@ class HlsDownloader {
       }
 
       if (segments.any((s) => s.key != null)) {
-        await Isolate.run(() async {
-          for (int i = 0; i < segments.length; i++) {
-            final segment = segments[i];
-            if (segment.key == null) continue;
-
-            final file = File(validFiles[i].path);
-            if (!file.existsSync()) continue;
-
-            final encrypted = await file.readAsBytes();
-            final decrypted = HlsCrypto.decrypt(
-              encrypted,
-              segment.key!,
-              segment.iv,
-              segment.seq,
-            );
-            await file.writeAsBytes(decrypted, flush: true);
-          }
-        });
+        final decryptedPaths = await _decryptInIsolate(
+          segments,
+          validFiles.map((f) => f.path).toList(),
+        );
+        validFiles
+          ..clear()
+          ..addAll(decryptedPaths.map(File.new));
       }
 
       if (cancelled) throw _CancelledException();
@@ -254,6 +266,10 @@ class HlsDownloader {
 
       // Remux
       await effectiveRemuxer.remux(validFiles, savePath);
+      if (cancelled ||
+          task.status == DownloadStatus.paused ||
+          task.status == DownloadStatus.cancelled)
+        throw _CancelledException();
 
       // Final progress
       task.updateProgress(
@@ -286,6 +302,32 @@ class HlsDownloader {
     }
   }
 
+  static Future<List<String>> _decryptInIsolate(
+    List<HlsSegment> segments,
+    List<String> inputPaths,
+  ) {
+    return Isolate.run(() async {
+      final paths = <String>[];
+      for (int i = 0; i < segments.length; i++) {
+        final segment = segments[i], original = File(inputPaths[i]);
+        if (segment.key == null) {
+          paths.add(original.path);
+          continue;
+        }
+        final decrypted = HlsCrypto.decrypt(
+          await original.readAsBytes(),
+          segment.key!,
+          segment.iv,
+          segment.seq,
+        );
+        final file = File('${original.path}.decrypted');
+        await file.writeAsBytes(decrypted, flush: true);
+        paths.add(file.path);
+      }
+      return paths;
+    });
+  }
+
   /// Downloads a single segment file.
   Future<void> _downloadSegment(
     String url,
@@ -293,9 +335,11 @@ class HlsDownloader {
     Map<String, String> headers,
     void Function(int bytesReceived) onBytesReceived,
   ) async {
-    final request = await _client.getUrl(Uri.parse(url));
+    final request = await _client
+        .getUrl(Uri.parse(url))
+        .timeout(const Duration(seconds: 20));
     headers.forEach((k, v) => request.headers.set(k, v));
-    final response = await request.close();
+    final response = await request.close().timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 429 || response.statusCode == 503) {
       final retryAfterHeader = response.headers.value('retry-after');
@@ -318,12 +362,21 @@ class HlsDownloader {
     }
 
     final sink = destination.openWrite();
+    var received = 0;
     try {
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(const Duration(seconds: 30))) {
+        received += chunk.length;
         sink.add(chunk);
         onBytesReceived(chunk.length);
       }
       await sink.flush();
+      if (received == 0 ||
+          (response.contentLength >= 0 &&
+              received != response.contentLength &&
+              response.compressionState !=
+                  HttpClientResponseCompressionState.decompressed)) {
+        throw HttpException('Incomplete HLS segment');
+      }
     } finally {
       await sink.close();
     }

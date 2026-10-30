@@ -1,3 +1,7 @@
+import 'package:shonenx/features/downloads/providers/download_provider.dart';
+import 'package:shonenx/features/downloads/domain/models/download_task.dart';
+import 'package:shonenx/features/downloads/presentation/downloads_screen.dart';
+import 'package:shonenx/features/offline/offline_catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,6 +43,7 @@ class EpisodesTabWidget extends ConsumerStatefulWidget {
 
 class _EpisodesTabWidgetState extends ConsumerState<EpisodesTabWidget>
     with AutomaticKeepAliveClientMixin {
+  bool _showOffline = false;
   @override
   bool get wantKeepAlive => true;
 
@@ -49,6 +54,31 @@ class _EpisodesTabWidgetState extends ConsumerState<EpisodesTabWidget>
     final cs = Theme.of(context).colorScheme;
     final sourcesAsync = ref.watch(widget.media.type.availableSourcesProvider);
 
+    final local = (ref.watch(downloadTasksProvider).value ?? <DownloadTask>[])
+        .where((t) => OfflineCatalog.belongsToMedia(t, widget.media))
+        .toList();
+    if (_showOffline ||
+        (local.isNotEmpty && (sourcesAsync.value ?? []).isEmpty)) {
+      return Column(
+        children: [
+          ListTile(
+            title: const Text('Downloads for this title'),
+            trailing: TextButton(
+              onPressed: () => setState(() => _showOffline = false),
+              child: const Text('Online list'),
+            ),
+          ),
+          Expanded(
+            child: OfflineTitleScreen(
+              titleKey: '',
+              mediaId: widget.media.id,
+              media: widget.media,
+              embedded: true,
+            ),
+          ),
+        ],
+      );
+    }
     if (sourcesAsync.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -61,6 +91,18 @@ class _EpisodesTabWidgetState extends ConsumerState<EpisodesTabWidget>
 
     return Column(
       children: [
+        if (local.isNotEmpty)
+          ListTile(
+            leading: const Icon(Icons.offline_pin_outlined),
+            title: Text(
+              '${local.where((t) => t.status == DownloadStatus.completed).length} downloaded ${widget.media.type == MediaType.MANGA ? 'chapters' : 'episodes'}',
+            ),
+            subtitle: const Text(
+              'Open saved files without connecting to a source',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => setState(() => _showOffline = true),
+          ),
         if (widget.media.sourceId == null) ...[
           StaggeredFadeIn(
             index: 0,
@@ -198,7 +240,8 @@ class _EpisodesTabWidgetState extends ConsumerState<EpisodesTabWidget>
                               );
                             },
                           ),
-                          if (widget.media.type == MediaType.ANIME || widget.media.type == MediaType.MANGA)
+                          if (widget.media.type == MediaType.ANIME ||
+                              widget.media.type == MediaType.MANGA)
                             ListTile(
                               title: const Text('Stream / Download'),
                               leading: const Icon(Icons.tune_rounded),

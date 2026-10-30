@@ -1,3 +1,29 @@
+# ShonenZ+ 0.2.1 — readers and offline downloads
+
+- Repair blank Webtoon pages: reserve image space while decoding, render local
+  files with bounded image decoding, retain scrolling across progress updates,
+  and restore the last saved page. Paginated LTR/RTL reading is preserved.
+- Open downloaded manga above the navigation shell. Missing or damaged pages
+  show an error and retry instead of leaving an empty reader.
+- Add a downloaded-items view on both manga and anime title pages. Completed
+  chapter/episode rows open local content directly, with source/item identity
+  checks that keep unrelated titles and scanlator releases separate.
+- Add scanlator filtering, sorting and a preferred group saved per title.
+- Add manga batch downloads alongside anime batches: all/unread, chapter ranges,
+  next 5/10, bounded queue processing, cancellation and failed-item retry.
+- Persist queued manga before resolving pages; pause pending jobs immediately,
+  wait for active writers before retry/deletion, validate cached images, and
+  reject empty chapters. Preserve query parameters that identify distinct pages.
+- Repair anime transfer resume validation, partial/empty-file detection, timeouts
+  and pause behavior. Give each stream proxy its persisted download ID.
+- Repair encrypted HLS worker messaging and retry after a remux interruption;
+  retain raw segment checkpoints and reject stale segments from another playlist.
+- Save offline playback into title history and keep reading/playback/bookmark
+  progress in recoverable metadata sidecars with serialized writes.
+- The HTML joiner lists required filenames, explains accidental source-file
+  selection, and lets users remove one wrong part without clearing valid parts.
+- Keep the application ID and signing certificate from 0.2.0 for in-place updates.
+
 # ShonenZ+ 0.2.0 development release
 
 - New application ID, RSA4096 signing key and original Z+ launcher artwork.

@@ -1,3 +1,6 @@
+import 'package:shonenx/features/history/domain/models/history_entry.dart';
+import 'package:shonenx/features/history/providers/history_provider.dart';
+import 'package:shonenx/shared/providers/security_prefs_provider.dart';
 import 'package:shonenx/features/downloads/providers/download_provider.dart';
 import 'dart:async';
 
@@ -266,9 +269,12 @@ class PlayerController extends Notifier<PlayerState> {
   int? _offlineTaskId;
   int _lastOfflineSecond = -10;
   void _onPlaybackProgress(Duration position, Duration duration) {
-    if (_offlineTaskId != null && (position.inSeconds - _lastOfflineSecond).abs() >= 5) {
+    if (_offlineTaskId != null &&
+        (position.inSeconds - _lastOfflineSecond).abs() >= 5) {
       _lastOfflineSecond = position.inSeconds;
-      ref.read(downloadRepositoryProvider).updatePlayback(_offlineTaskId!, position.inMilliseconds);
+      unawaited(
+        _saveOfflineProgress(position, duration).catchError((Object _) {}),
+      );
     }
     if (_media == null || state.activeEpisode == null) return;
     if (duration.inSeconds < 30 || position.inSeconds <= 0) return;
@@ -305,6 +311,33 @@ class PlayerController extends Notifier<PlayerState> {
         skipEpisode();
       }
     }
+  }
+
+  Future<void> _saveOfflineProgress(
+    Duration position,
+    Duration duration,
+  ) async {
+    if (ref.read(securityPrefsProvider).incognitoMode) return;
+    final repo = ref.read(downloadRepositoryProvider);
+    final task = await repo.getTaskById(_offlineTaskId!);
+    if (task == null || !ref.mounted) return;
+    await repo.updatePlayback(task.id, position.inMilliseconds);
+    if (!ref.mounted || duration.inMilliseconds <= 0) return;
+    await ref
+        .read(historyRepositoryProvider)
+        .saveProgress(
+          HistoryEntry()
+            ..mediaType = 'anime'
+            ..mediaId = task.mediaId
+            ..mediaTitle = task.mediaTitle
+            ..itemNumber = task.episodeNumber
+            ..itemTitle = task.itemTitle
+            ..progress = position.inMilliseconds
+            ..total = duration.inMilliseconds
+            ..sourceId = task.sourceId
+            ..sourceName = task.sourceName
+            ..lastUpdated = DateTime.now(),
+        );
   }
 
   Future<void> initialize(

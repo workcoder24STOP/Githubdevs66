@@ -52,15 +52,6 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
   }
 
   @override
-  void didUpdateWidget(covariant ReaderWebtoonView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialPage != widget.initialPage) {
-      _lastReportedPage = widget.initialPage;
-      _isInitialScrollDone = widget.initialPage == 0;
-    }
-  }
-
-  @override
   void dispose() {
     _positionsListener.itemPositions.removeListener(_onScroll);
     HardwareKeyboard.instance.removeHandler(_onKeyEvent);
@@ -85,7 +76,7 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
 
     if (!_isInitialScrollDone) {
       final hasReachedInitial = positions.any(
-        (p) => p.index == widget.initialPage,
+        (p) => p.index == widget.initialPage.clamp(0, widget.pages.length - 1),
       );
       if (hasReachedInitial) {
         _isInitialScrollDone = true;
@@ -157,7 +148,9 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
           physics: const BouncingScrollPhysics(),
           itemScrollController: _scrollController,
           itemPositionsListener: _positionsListener,
-          initialScrollIndex: widget.pages.isEmpty ? 0 : widget.initialPage.clamp(0, widget.pages.length - 1),
+          initialScrollIndex: widget.pages.isEmpty
+              ? 0
+              : widget.initialPage.clamp(0, widget.pages.length - 1),
           itemCount: widget.pages.length,
           itemBuilder: (context, index) {
             final page = widget.pages[index];
@@ -167,6 +160,7 @@ class ReaderWebtoonViewState extends State<ReaderWebtoonView> {
               url: page.url,
               headers: page.headers ?? const {},
               index: index,
+              continuous: true,
               scaleType: ReaderScaleType.fitWidth,
               textColor: widget.textColor,
             );

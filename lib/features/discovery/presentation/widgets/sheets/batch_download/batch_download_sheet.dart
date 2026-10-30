@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shonenx/features/offline/offline_catalog.dart';
@@ -89,6 +90,8 @@ class BatchDownloadSheet extends ConsumerStatefulWidget {
 }
 
 class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
+  bool get isManga => widget.media.type == MediaType.MANGA;
+  String get itemLabel => isManga ? 'Chapter' : 'Episode';
   late Set<UnifiedEpisode> selectedEpisodes;
   BatchStep currentStep = BatchStep.selectEpisodes;
 
@@ -184,6 +187,10 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
 
   void goToChoosePreference() {
     if (selectedEpisodes.isEmpty) return;
+    if (isManga) {
+      unawaited(queueManga());
+      return;
+    }
     final firstEp = sortedSelected.first;
     setState(() {
       referenceEpisode = firstEp;
@@ -201,6 +208,62 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
     fetchServersForReference(firstEp);
   }
 
+  Future<void> queueManga() async {
+    setState(() {
+      currentStep = BatchStep.queueing;
+      currentIndex = 0;
+      successCount = 0;
+      failedEpisodes.clear();
+      failureReasons.clear();
+      isQueueingCancelled = false;
+    });
+    try {
+      final manager = await ref.read(downloadManagerProvider.future);
+      for (final ep in sortedSelected) {
+        if (!mounted || isQueueingCancelled) return;
+        setState(() => currentQueueStatus = 'Queuing chapter ${ep.number}');
+        try {
+          final task = await OfflineCatalog.mangaTask(
+            widget.media,
+            widget.source,
+            ep,
+          );
+          final existing = await ref
+              .read(downloadRepositoryProvider)
+              .getByCatalogKey(task.catalogKey);
+          if (existing == null ||
+              (existing.status != DownloadStatus.completed &&
+                  existing.status != DownloadStatus.downloading &&
+                  existing.status != DownloadStatus.pending)) {
+            await manager.startDownload(task);
+            queuedTaskIds.add(existing?.id ?? task.id);
+          }
+          successCount++;
+        } catch (error) {
+          failedEpisodes.add(ep);
+          failureReasons[ep] = '$error';
+        }
+        if (mounted) setState(() => currentIndex++);
+      }
+    } catch (error) {
+      for (final ep in sortedSelected.skip(currentIndex)) {
+        failedEpisodes.add(ep);
+        failureReasons[ep] = '$error';
+      }
+    }
+    if (!mounted || isQueueingCancelled) return;
+    if (failedEpisodes.isNotEmpty) {
+      setState(() => currentStep = BatchStep.failedRecovery);
+    } else {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$successCount chapters queued or already downloaded.'),
+        ),
+      );
+    }
+  }
+
   Future<void> fetchServersForReference(UnifiedEpisode initialEp) async {
     try {
       final sourceImpl = ref.read(animeSourceProvider(widget.source));
@@ -209,7 +272,9 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
 
       for (final ep in sortedSelected) {
         try {
-          final servers = await sourceImpl.getServers(ep.id);
+          final servers = await sourceImpl
+              .getServers(ep.id)
+              .timeout(const Duration(seconds: 30));
           if (servers.isNotEmpty) {
             foundServers = servers;
             workingEp = ep;
@@ -315,7 +380,9 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
               return referenceStreamsCache[key]!;
             }
             try {
-              final sStreams = await sourceImpl.getSources(ep.id, s);
+              final sStreams = await sourceImpl
+                  .getSources(ep.id, s)
+                  .timeout(const Duration(seconds: 30));
               referenceStreamsCache[key] = sStreams;
               return sStreams;
             } catch (_) {
@@ -440,7 +507,22 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
       });
 
       try {
-        final servers = await sourceImpl.getServers(ep.id);
+        final existing = await ref
+            .read(downloadRepositoryProvider)
+            .getByCatalogKey(
+              OfflineCatalog.itemKey(widget.media, widget.source, ep),
+            );
+        if (existing != null &&
+            (existing.status == DownloadStatus.completed ||
+                existing.status == DownloadStatus.downloading ||
+                existing.status == DownloadStatus.pending)) {
+          successCount++;
+          currentIndex++;
+          continue;
+        }
+        final servers = await sourceImpl
+            .getServers(ep.id)
+            .timeout(const Duration(seconds: 30));
         if (servers.isEmpty) {
           failedEpisodes.add(ep);
           failureReasons[ep] = 'No servers returned';
@@ -465,7 +547,9 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
           continue;
         }
 
-        final streams = await sourceImpl.getSources(ep.id, matchedServer);
+        final streams = await sourceImpl
+            .getSources(ep.id, matchedServer)
+            .timeout(const Duration(seconds: 45));
         if (streams.isEmpty) {
           failedEpisodes.add(ep);
           failureReasons[ep] = 'No video streams returned';
@@ -550,7 +634,9 @@ class BatchDownloadSheetState extends ConsumerState<BatchDownloadSheet> {
             final streamsList = await Future.wait(
               otherServers.map((s) async {
                 try {
-                  return await sourceImpl.getSources(ep.id, s);
+                  return await sourceImpl
+                      .getSources(ep.id, s)
+                      .timeout(const Duration(seconds: 30));
                 } catch (_) {
                   return <VideoStream>[];
                 }

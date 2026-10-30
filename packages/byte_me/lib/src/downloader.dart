@@ -25,6 +25,11 @@ class ByteMe {
   final Map<String, _PendingJob> _registeredJobs = {};
   final Map<String, _PendingJob> _pendingJobs = {};
   int _activeCount = 0;
+  final Map<String, Completer<void>> _running = {};
+
+  /// Wait for an aborted transfer to release its file before resuming/deleting.
+  Future<void> waitForIdle(String id) =>
+      _running[id]?.future ?? Future<void>.value();
   bool _disposed = false;
 
   /// Creates a new download manager.
@@ -202,10 +207,14 @@ class ByteMe {
   }
 
   Future<void> _executeJob(_PendingJob job) async {
+    final settled = Completer<void>();
+    _running[job.task.id] = settled;
     try {
       await job.executor();
     } finally {
       _activeCount--;
+      _running.remove(job.task.id);
+      settled.complete();
       _pendingJobs.remove(job.task.id);
       if (job.task.status == DownloadStatus.completed ||
           job.task.status == DownloadStatus.cancelled) {

@@ -2,13 +2,11 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shonenx/core/router/app_navigator.dart';
 import 'package:shonenx/features/downloads/domain/models/download_task.dart';
 import 'package:shonenx/features/downloads/providers/download_provider.dart';
 import 'package:shonenx/features/offline/offline_catalog.dart';
-import 'package:shonenx/features/offline/offline_reader.dart';
-import 'package:shonenx/features/player/domain/player_mode.dart';
-import 'package:shonenx/shared/models/video_stream.dart';
+import 'package:shonenx/features/offline/open_download.dart';
+import 'package:shonenx/shared/models/unified_media.dart';
 import 'package:shonenx/shared/widgets/app_scaffold.dart';
 
 class DownloadsScreen extends ConsumerWidget {
@@ -86,17 +84,23 @@ class DownloadsScreen extends ConsumerWidget {
 
 class OfflineTitleScreen extends ConsumerWidget {
   final String titleKey, mediaId;
+  final UnifiedMedia? media;
+  final bool embedded;
   const OfflineTitleScreen({
     super.key,
     required this.titleKey,
     required this.mediaId,
+    this.media,
+    this.embedded = false,
   });
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks =
         (ref.watch(downloadTasksProvider).value ?? [])
             .where(
-              (t) => titleKey.isEmpty
+              (t) => media != null
+                  ? OfflineCatalog.belongsToMedia(t, media!)
+                  : titleKey.isEmpty
                   ? t.mediaId == mediaId
                   : t.titleKey == titleKey,
             )
@@ -108,9 +112,11 @@ class OfflineTitleScreen extends ConsumerWidget {
                 : season;
           });
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tasks.isEmpty ? 'Downloads' : tasks.first.mediaTitle),
-      ),
+      appBar: embedded
+          ? null
+          : AppBar(
+              title: Text(tasks.isEmpty ? 'Downloads' : tasks.first.mediaTitle),
+            ),
       body: tasks.isEmpty
           ? const Center(child: Text('No downloads for this title.'))
           : ListView.builder(
@@ -136,62 +142,14 @@ class OfflineTitleScreen extends ConsumerWidget {
                     '${t.isManga ? 'Chapter' : 'S${t.season} · Episode'} ${t.episodeNumber} ${t.itemTitle}',
                   ),
                   subtitle: Text(
-                    '${t.sourceName} • ${t.status.name}${t.errorReason == null ? '' : '\n${t.errorReason}'}',
+                    '${t.sourceName}${t.scanlator.isEmpty ? '' : ' · ${t.scanlator}'} • ${t.status.name}${t.errorReason == null ? '' : '\n${t.errorReason}'}',
                   ),
                   isThreeLine: t.errorReason != null,
-                  onTap: complete
-                      ? () async {
-                          try {
-                            if (t.isManga) {
-                              if (context.mounted) {
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => OfflineReader(task: t),
-                                  ),
-                                );
-                              }
-                            } else {
-                              if (!await File(t.savePath).exists()) {
-                                throw StateError(
-                                  'Video was moved or deleted. Import it again.',
-                                );
-                              }
-                              if (context.mounted) {
-                                context.pushPlayer(
-                                  PlayerModeOffline(
-                                    filePath: t.savePath,
-                                    title:
-                                        '${t.mediaTitle} — ${t.episodeNumber}',
-                                    taskId: t.id,
-                                    startPosition: Duration(
-                                      milliseconds: t.playbackMs,
-                                    ),
-                                    subtitles: t.subtitles
-                                        .where((s) => File(s.url).existsSync())
-                                        .map(
-                                          (s) => SubtitleTrack(
-                                            url: s.url,
-                                            language: s.language,
-                                            label: s.label,
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                );
-                              }
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(SnackBar(content: Text('$e')));
-                            }
-                          }
-                        }
-                      : null,
+                  onTap: complete ? () => openDownload(context, t) : null,
                   trailing: PopupMenuButton<String>(
                     itemBuilder: (_) => [
-                      if (t.status == DownloadStatus.downloading)
+                      if (t.status == DownloadStatus.downloading ||
+                          t.status == DownloadStatus.pending)
                         const PopupMenuItem(
                           value: 'pause',
                           child: Text('Pause'),

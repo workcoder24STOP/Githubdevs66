@@ -65,6 +65,8 @@ class DownloadTask {
   String sourceBaseUrl = '';
   String itemId = '';
   String itemTitle = '';
+  String scanlator = '';
+  String externalIdsJson = '{}';
   int season = 1;
   bool isManga = false;
   bool imported = false;

@@ -47,113 +47,123 @@ const DownloadTaskSchema = CollectionSchema(
       name: r'errorReason',
       type: IsarType.string,
     ),
-    r'fileName': PropertySchema(
+    r'externalIdsJson': PropertySchema(
       id: 6,
+      name: r'externalIdsJson',
+      type: IsarType.string,
+    ),
+    r'fileName': PropertySchema(
+      id: 7,
       name: r'fileName',
       type: IsarType.string,
     ),
     r'headers': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'headers',
       type: IsarType.objectList,
 
       target: r'DownloadHeader',
     ),
-    r'imported': PropertySchema(id: 8, name: r'imported', type: IsarType.bool),
-    r'isM3u8': PropertySchema(id: 9, name: r'isM3u8', type: IsarType.bool),
-    r'isManga': PropertySchema(id: 10, name: r'isManga', type: IsarType.bool),
-    r'itemId': PropertySchema(id: 11, name: r'itemId', type: IsarType.string),
+    r'imported': PropertySchema(id: 9, name: r'imported', type: IsarType.bool),
+    r'isM3u8': PropertySchema(id: 10, name: r'isM3u8', type: IsarType.bool),
+    r'isManga': PropertySchema(id: 11, name: r'isManga', type: IsarType.bool),
+    r'itemId': PropertySchema(id: 12, name: r'itemId', type: IsarType.string),
     r'itemTitle': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'itemTitle',
       type: IsarType.string,
     ),
     r'localPages': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'localPages',
       type: IsarType.stringList,
     ),
-    r'mediaId': PropertySchema(id: 14, name: r'mediaId', type: IsarType.string),
+    r'mediaId': PropertySchema(id: 15, name: r'mediaId', type: IsarType.string),
     r'mediaTitle': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'mediaTitle',
       type: IsarType.string,
     ),
     r'pagesJson': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'pagesJson',
       type: IsarType.string,
     ),
     r'playbackMs': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'playbackMs',
       type: IsarType.long,
     ),
     r'progress': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'progress',
       type: IsarType.double,
     ),
     r'readingPage': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'readingPage',
       type: IsarType.long,
     ),
     r'requiresProxy': PropertySchema(
-      id: 20,
+      id: 21,
       name: r'requiresProxy',
       type: IsarType.bool,
     ),
     r'savePath': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'savePath',
       type: IsarType.string,
     ),
-    r'season': PropertySchema(id: 22, name: r'season', type: IsarType.long),
-    r'sourceBaseUrl': PropertySchema(
+    r'scanlator': PropertySchema(
       id: 23,
+      name: r'scanlator',
+      type: IsarType.string,
+    ),
+    r'season': PropertySchema(id: 24, name: r'season', type: IsarType.long),
+    r'sourceBaseUrl': PropertySchema(
+      id: 25,
       name: r'sourceBaseUrl',
       type: IsarType.string,
     ),
     r'sourceId': PropertySchema(
-      id: 24,
+      id: 26,
       name: r'sourceId',
       type: IsarType.string,
     ),
     r'sourceName': PropertySchema(
-      id: 25,
+      id: 27,
       name: r'sourceName',
       type: IsarType.string,
     ),
     r'status': PropertySchema(
-      id: 26,
+      id: 28,
       name: r'status',
       type: IsarType.byte,
       enumMap: _DownloadTaskstatusEnumValueMap,
     ),
     r'subtitles': PropertySchema(
-      id: 27,
+      id: 29,
       name: r'subtitles',
       type: IsarType.objectList,
 
       target: r'DownloadSubtitle',
     ),
     r'titleKey': PropertySchema(
-      id: 28,
+      id: 30,
       name: r'titleKey',
       type: IsarType.string,
     ),
     r'totalBytes': PropertySchema(
-      id: 29,
+      id: 31,
       name: r'totalBytes',
       type: IsarType.long,
     ),
     r'updatedAt': PropertySchema(
-      id: 30,
+      id: 32,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
-    r'url': PropertySchema(id: 31, name: r'url', type: IsarType.string),
+    r'url': PropertySchema(id: 33, name: r'url', type: IsarType.string),
   },
 
   estimateSize: _downloadTaskEstimateSize,
@@ -228,6 +238,7 @@ int _downloadTaskEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  bytesCount += 3 + object.externalIdsJson.length * 3;
   bytesCount += 3 + object.fileName.length * 3;
   bytesCount += 3 + object.headers.length * 3;
   {
@@ -254,6 +265,7 @@ int _downloadTaskEstimateSize(
   bytesCount += 3 + object.mediaTitle.length * 3;
   bytesCount += 3 + object.pagesJson.length * 3;
   bytesCount += 3 + object.savePath.length * 3;
+  bytesCount += 3 + object.scanlator.length * 3;
   bytesCount += 3 + object.sourceBaseUrl.length * 3;
   bytesCount += 3 + object.sourceId.length * 3;
   bytesCount += 3 + object.sourceName.length * 3;
@@ -286,42 +298,44 @@ void _downloadTaskSerialize(
   writer.writeLong(offsets[3], object.downloadedBytes);
   writer.writeDouble(offsets[4], object.episodeNumber);
   writer.writeString(offsets[5], object.errorReason);
-  writer.writeString(offsets[6], object.fileName);
+  writer.writeString(offsets[6], object.externalIdsJson);
+  writer.writeString(offsets[7], object.fileName);
   writer.writeObjectList<DownloadHeader>(
-    offsets[7],
+    offsets[8],
     allOffsets,
     DownloadHeaderSchema.serialize,
     object.headers,
   );
-  writer.writeBool(offsets[8], object.imported);
-  writer.writeBool(offsets[9], object.isM3u8);
-  writer.writeBool(offsets[10], object.isManga);
-  writer.writeString(offsets[11], object.itemId);
-  writer.writeString(offsets[12], object.itemTitle);
-  writer.writeStringList(offsets[13], object.localPages);
-  writer.writeString(offsets[14], object.mediaId);
-  writer.writeString(offsets[15], object.mediaTitle);
-  writer.writeString(offsets[16], object.pagesJson);
-  writer.writeLong(offsets[17], object.playbackMs);
-  writer.writeDouble(offsets[18], object.progress);
-  writer.writeLong(offsets[19], object.readingPage);
-  writer.writeBool(offsets[20], object.requiresProxy);
-  writer.writeString(offsets[21], object.savePath);
-  writer.writeLong(offsets[22], object.season);
-  writer.writeString(offsets[23], object.sourceBaseUrl);
-  writer.writeString(offsets[24], object.sourceId);
-  writer.writeString(offsets[25], object.sourceName);
-  writer.writeByte(offsets[26], object.status.index);
+  writer.writeBool(offsets[9], object.imported);
+  writer.writeBool(offsets[10], object.isM3u8);
+  writer.writeBool(offsets[11], object.isManga);
+  writer.writeString(offsets[12], object.itemId);
+  writer.writeString(offsets[13], object.itemTitle);
+  writer.writeStringList(offsets[14], object.localPages);
+  writer.writeString(offsets[15], object.mediaId);
+  writer.writeString(offsets[16], object.mediaTitle);
+  writer.writeString(offsets[17], object.pagesJson);
+  writer.writeLong(offsets[18], object.playbackMs);
+  writer.writeDouble(offsets[19], object.progress);
+  writer.writeLong(offsets[20], object.readingPage);
+  writer.writeBool(offsets[21], object.requiresProxy);
+  writer.writeString(offsets[22], object.savePath);
+  writer.writeString(offsets[23], object.scanlator);
+  writer.writeLong(offsets[24], object.season);
+  writer.writeString(offsets[25], object.sourceBaseUrl);
+  writer.writeString(offsets[26], object.sourceId);
+  writer.writeString(offsets[27], object.sourceName);
+  writer.writeByte(offsets[28], object.status.index);
   writer.writeObjectList<DownloadSubtitle>(
-    offsets[27],
+    offsets[29],
     allOffsets,
     DownloadSubtitleSchema.serialize,
     object.subtitles,
   );
-  writer.writeString(offsets[28], object.titleKey);
-  writer.writeLong(offsets[29], object.totalBytes);
-  writer.writeDateTime(offsets[30], object.updatedAt);
-  writer.writeString(offsets[31], object.url);
+  writer.writeString(offsets[30], object.titleKey);
+  writer.writeLong(offsets[31], object.totalBytes);
+  writer.writeDateTime(offsets[32], object.updatedAt);
+  writer.writeString(offsets[33], object.url);
 }
 
 DownloadTask _downloadTaskDeserialize(
@@ -337,49 +351,51 @@ DownloadTask _downloadTaskDeserialize(
   object.downloadedBytes = reader.readLong(offsets[3]);
   object.episodeNumber = reader.readDouble(offsets[4]);
   object.errorReason = reader.readStringOrNull(offsets[5]);
-  object.fileName = reader.readString(offsets[6]);
+  object.externalIdsJson = reader.readString(offsets[6]);
+  object.fileName = reader.readString(offsets[7]);
   object.headers =
       reader.readObjectList<DownloadHeader>(
-        offsets[7],
+        offsets[8],
         DownloadHeaderSchema.deserialize,
         allOffsets,
         DownloadHeader(),
       ) ??
       [];
   object.id = id;
-  object.imported = reader.readBool(offsets[8]);
-  object.isM3u8 = reader.readBool(offsets[9]);
-  object.isManga = reader.readBool(offsets[10]);
-  object.itemId = reader.readString(offsets[11]);
-  object.itemTitle = reader.readString(offsets[12]);
-  object.localPages = reader.readStringList(offsets[13]) ?? [];
-  object.mediaId = reader.readString(offsets[14]);
-  object.mediaTitle = reader.readString(offsets[15]);
-  object.pagesJson = reader.readString(offsets[16]);
-  object.playbackMs = reader.readLong(offsets[17]);
-  object.progress = reader.readDouble(offsets[18]);
-  object.readingPage = reader.readLong(offsets[19]);
-  object.requiresProxy = reader.readBool(offsets[20]);
-  object.savePath = reader.readString(offsets[21]);
-  object.season = reader.readLong(offsets[22]);
-  object.sourceBaseUrl = reader.readString(offsets[23]);
-  object.sourceId = reader.readString(offsets[24]);
-  object.sourceName = reader.readString(offsets[25]);
+  object.imported = reader.readBool(offsets[9]);
+  object.isM3u8 = reader.readBool(offsets[10]);
+  object.isManga = reader.readBool(offsets[11]);
+  object.itemId = reader.readString(offsets[12]);
+  object.itemTitle = reader.readString(offsets[13]);
+  object.localPages = reader.readStringList(offsets[14]) ?? [];
+  object.mediaId = reader.readString(offsets[15]);
+  object.mediaTitle = reader.readString(offsets[16]);
+  object.pagesJson = reader.readString(offsets[17]);
+  object.playbackMs = reader.readLong(offsets[18]);
+  object.progress = reader.readDouble(offsets[19]);
+  object.readingPage = reader.readLong(offsets[20]);
+  object.requiresProxy = reader.readBool(offsets[21]);
+  object.savePath = reader.readString(offsets[22]);
+  object.scanlator = reader.readString(offsets[23]);
+  object.season = reader.readLong(offsets[24]);
+  object.sourceBaseUrl = reader.readString(offsets[25]);
+  object.sourceId = reader.readString(offsets[26]);
+  object.sourceName = reader.readString(offsets[27]);
   object.status =
-      _DownloadTaskstatusValueEnumMap[reader.readByteOrNull(offsets[26])] ??
+      _DownloadTaskstatusValueEnumMap[reader.readByteOrNull(offsets[28])] ??
       DownloadStatus.pending;
   object.subtitles =
       reader.readObjectList<DownloadSubtitle>(
-        offsets[27],
+        offsets[29],
         DownloadSubtitleSchema.deserialize,
         allOffsets,
         DownloadSubtitle(),
       ) ??
       [];
-  object.titleKey = reader.readString(offsets[28]);
-  object.totalBytes = reader.readLong(offsets[29]);
-  object.updatedAt = reader.readDateTime(offsets[30]);
-  object.url = reader.readString(offsets[31]);
+  object.titleKey = reader.readString(offsets[30]);
+  object.totalBytes = reader.readLong(offsets[31]);
+  object.updatedAt = reader.readDateTime(offsets[32]);
+  object.url = reader.readString(offsets[33]);
   return object;
 }
 
@@ -405,6 +421,8 @@ P _downloadTaskDeserializeProp<P>(
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
+      return (reader.readString(offset)) as P;
+    case 8:
       return (reader.readObjectList<DownloadHeader>(
                 offset,
                 DownloadHeaderSchema.deserialize,
@@ -413,47 +431,49 @@ P _downloadTaskDeserializeProp<P>(
               ) ??
               [])
           as P;
-    case 8:
-      return (reader.readBool(offset)) as P;
     case 9:
       return (reader.readBool(offset)) as P;
     case 10:
       return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 12:
       return (reader.readString(offset)) as P;
     case 13:
-      return (reader.readStringList(offset) ?? []) as P;
-    case 14:
       return (reader.readString(offset)) as P;
+    case 14:
+      return (reader.readStringList(offset) ?? []) as P;
     case 15:
       return (reader.readString(offset)) as P;
     case 16:
       return (reader.readString(offset)) as P;
     case 17:
-      return (reader.readLong(offset)) as P;
-    case 18:
-      return (reader.readDouble(offset)) as P;
-    case 19:
-      return (reader.readLong(offset)) as P;
-    case 20:
-      return (reader.readBool(offset)) as P;
-    case 21:
       return (reader.readString(offset)) as P;
-    case 22:
+    case 18:
       return (reader.readLong(offset)) as P;
+    case 19:
+      return (reader.readDouble(offset)) as P;
+    case 20:
+      return (reader.readLong(offset)) as P;
+    case 21:
+      return (reader.readBool(offset)) as P;
+    case 22:
+      return (reader.readString(offset)) as P;
     case 23:
       return (reader.readString(offset)) as P;
     case 24:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 25:
       return (reader.readString(offset)) as P;
     case 26:
+      return (reader.readString(offset)) as P;
+    case 27:
+      return (reader.readString(offset)) as P;
+    case 28:
       return (_DownloadTaskstatusValueEnumMap[reader.readByteOrNull(offset)] ??
               DownloadStatus.pending)
           as P;
-    case 27:
+    case 29:
       return (reader.readObjectList<DownloadSubtitle>(
                 offset,
                 DownloadSubtitleSchema.deserialize,
@@ -462,13 +482,13 @@ P _downloadTaskDeserializeProp<P>(
               ) ??
               [])
           as P;
-    case 28:
-      return (reader.readString(offset)) as P;
-    case 29:
-      return (reader.readLong(offset)) as P;
     case 30:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 31:
+      return (reader.readLong(offset)) as P;
+    case 32:
+      return (reader.readDateTime(offset)) as P;
+    case 33:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1341,6 +1361,147 @@ extension DownloadTaskQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(property: r'errorReason', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'externalIdsJson',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'externalIdsJson',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'externalIdsJson',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'externalIdsJson', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  externalIdsJsonIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'externalIdsJson', value: ''),
       );
     });
   }
@@ -2863,6 +3024,147 @@ extension DownloadTaskQueryFilter
     });
   }
 
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorEqualTo(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'scanlator',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorEndsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'scanlator',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'scanlator',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'scanlator', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition>
+  scanlatorIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'scanlator', value: ''),
+      );
+    });
+  }
+
   QueryBuilder<DownloadTask, DownloadTask, QAfterFilterCondition> seasonEqualTo(
     int value,
   ) {
@@ -3936,6 +4238,20 @@ extension DownloadTaskQuerySortBy
     });
   }
 
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy>
+  sortByExternalIdsJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalIdsJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy>
+  sortByExternalIdsJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalIdsJson', Sort.desc);
+    });
+  }
+
   QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> sortByFileName() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fileName', Sort.asc);
@@ -4105,6 +4421,18 @@ extension DownloadTaskQuerySortBy
   QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> sortBySavePathDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'savePath', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> sortByScanlator() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scanlator', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> sortByScanlatorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scanlator', Sort.desc);
     });
   }
 
@@ -4284,6 +4612,20 @@ extension DownloadTaskQuerySortThenBy
   thenByErrorReasonDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'errorReason', Sort.desc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy>
+  thenByExternalIdsJson() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalIdsJson', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy>
+  thenByExternalIdsJsonDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalIdsJson', Sort.desc);
     });
   }
 
@@ -4471,6 +4813,18 @@ extension DownloadTaskQuerySortThenBy
     });
   }
 
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> thenByScanlator() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scanlator', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> thenByScanlatorDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scanlator', Sort.desc);
+    });
+  }
+
   QueryBuilder<DownloadTask, DownloadTask, QAfterSortBy> thenBySeason() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'season', Sort.asc);
@@ -4627,6 +4981,16 @@ extension DownloadTaskQueryWhereDistinct
     });
   }
 
+  QueryBuilder<DownloadTask, DownloadTask, QDistinct>
+  distinctByExternalIdsJson({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(
+        r'externalIdsJson',
+        caseSensitive: caseSensitive,
+      );
+    });
+  }
+
   QueryBuilder<DownloadTask, DownloadTask, QDistinct> distinctByFileName({
     bool caseSensitive = true,
   }) {
@@ -4729,6 +5093,14 @@ extension DownloadTaskQueryWhereDistinct
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'savePath', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<DownloadTask, DownloadTask, QDistinct> distinctByScanlator({
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'scanlator', caseSensitive: caseSensitive);
     });
   }
 
@@ -4844,6 +5216,13 @@ extension DownloadTaskQueryProperty
     });
   }
 
+  QueryBuilder<DownloadTask, String, QQueryOperations>
+  externalIdsJsonProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'externalIdsJson');
+    });
+  }
+
   QueryBuilder<DownloadTask, String, QQueryOperations> fileNameProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'fileName');
@@ -4939,6 +5318,12 @@ extension DownloadTaskQueryProperty
   QueryBuilder<DownloadTask, String, QQueryOperations> savePathProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'savePath');
+    });
+  }
+
+  QueryBuilder<DownloadTask, String, QQueryOperations> scanlatorProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'scanlator');
     });
   }
 

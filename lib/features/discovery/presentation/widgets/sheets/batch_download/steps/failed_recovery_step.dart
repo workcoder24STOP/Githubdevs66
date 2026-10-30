@@ -32,7 +32,7 @@ class FailedRecoveryStep extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Some episodes failed to queue',
+                      'Some items failed to queue',
                       style: textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: cs.error,
@@ -82,7 +82,7 @@ class FailedRecoveryStep extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Episode $epNumStr',
+                            '${state.itemLabel} $epNumStr',
                             style: textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),

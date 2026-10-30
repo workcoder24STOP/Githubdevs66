@@ -10,7 +10,19 @@ class CatalogSnapshot {
   static Future<Directory> _root() async => Directory(
     p.join((await getApplicationSupportDirectory()).path, 'offline-index'),
   ).create(recursive: true);
+  static final Map<String, Future<void>> _writes = {};
   static Future<void> write(DownloadTask t) async {
+    final previous = _writes[t.catalogKey] ?? Future<void>.value();
+    final next = previous.catchError((Object _) {}).then((_) => _write(t));
+    _writes[t.catalogKey] = next;
+    try {
+      await next;
+    } finally {
+      if (identical(_writes[t.catalogKey], next)) _writes.remove(t.catalogKey);
+    }
+  }
+
+  static Future<void> _write(DownloadTask t) async {
     if (t.catalogKey.isEmpty || t.status != DownloadStatus.completed) return;
     final root = await _root();
     final f = File(p.join(root.path, '${t.catalogKey}.json'));
@@ -26,6 +38,11 @@ class CatalogSnapshot {
         'sourceName': t.sourceName,
         'itemId': t.itemId,
         'itemTitle': t.itemTitle,
+        'scanlator': t.scanlator,
+        'externalIdsJson': t.externalIdsJson,
+        'readingPage': t.readingPage,
+        'bookmarks': t.bookmarks,
+        'playbackMs': t.playbackMs,
         'number': t.episodeNumber,
         'season': t.season,
         'manga': t.isManga,
@@ -44,6 +61,7 @@ class CatalogSnapshot {
   }
 
   static Future<void> remove(DownloadTask t) async {
+    await _writes[t.catalogKey]?.catchError((Object _) {});
     if (t.catalogKey.isEmpty) return;
     final f = File(p.join((await _root()).path, '${t.catalogKey}.json'));
     if (await f.exists()) await f.delete();
@@ -68,6 +86,11 @@ class CatalogSnapshot {
           ..sourceName = m['sourceName']
           ..itemId = m['itemId']
           ..itemTitle = m['itemTitle']
+          ..scanlator = m['scanlator'] ?? ''
+          ..externalIdsJson = m['externalIdsJson'] ?? '{}'
+          ..readingPage = m['readingPage'] ?? 0
+          ..bookmarks = (m['bookmarks'] as List? ?? []).cast<int>()
+          ..playbackMs = m['playbackMs'] ?? 0
           ..episodeNumber = (m['number'] as num).toDouble()
           ..season = m['season']
           ..isManga = m['manga']

@@ -25,7 +25,11 @@ class SelectEpisodesStep extends StatelessWidget {
             children: [
               _buildPresetPill('Select All', _selectAll, cs),
               const SizedBox(width: 8),
-              _buildPresetPill('Unwatched', _selectUnwatched, cs),
+              _buildPresetPill(
+                state.isManga ? 'Unread' : 'Unwatched',
+                _selectUnwatched,
+                cs,
+              ),
               const SizedBox(width: 8),
               _buildPresetPill('Range', () => _showRangeDialog(context), cs),
               const SizedBox(width: 8),
@@ -41,7 +45,7 @@ class SelectEpisodesStep extends StatelessWidget {
         Row(
           children: [
             Text(
-              'Selected Episodes',
+              'Selected ${state.isManga ? 'Chapters' : 'Episodes'}',
               style: textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.5,
@@ -123,7 +127,7 @@ class SelectEpisodesStep extends StatelessWidget {
                             Text(
                               ep.title?.isNotEmpty == true
                                   ? '${ep.title}'
-                                  : 'Episode $epNumStr',
+                                  : '${state.itemLabel} $epNumStr',
                               style: textTheme.bodyMedium?.copyWith(
                                 fontWeight: isSelected
                                     ? FontWeight.w700
@@ -136,7 +140,7 @@ class SelectEpisodesStep extends StatelessWidget {
                             Row(
                               children: [
                                 Text(
-                                  'Episode $epNumStr',
+                                  '${state.itemLabel} $epNumStr',
                                   style: textTheme.labelSmall?.copyWith(
                                     color: cs.onSurfaceVariant,
                                   ),
@@ -181,7 +185,9 @@ class SelectEpisodesStep extends StatelessWidget {
               : state.goToChoosePreference,
           icon: const Icon(Icons.settings_suggest_rounded, size: 20),
           label: Text(
-            'Configure Quality & Server (${state.selectedEpisodes.length})',
+            state.isManga
+                ? 'Download chapters (${state.selectedEpisodes.length})'
+                : 'Configure Quality & Server (${state.selectedEpisodes.length})',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           style: FilledButton.styleFrom(
@@ -269,7 +275,7 @@ class SelectEpisodesStep extends StatelessWidget {
 
     AppDialog.show(
       context: context,
-      title: 'Select Episode Range',
+      title: 'Select ${state.itemLabel} Range',
       child: StatefulBuilder(
         builder: (context, setState) {
           final cs = Theme.of(context).colorScheme;
@@ -278,7 +284,7 @@ class SelectEpisodesStep extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Enter start and end episode numbers (available: ${sorted.first.number} to ${sorted.last.number}):',
+                'Enter start and end numbers (available: ${sorted.first.number} to ${sorted.last.number}):',
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
@@ -291,7 +297,7 @@ class SelectEpisodesStep extends StatelessWidget {
                         decimal: true,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'From Episode',
+                        labelText: 'From ${state.itemLabel}',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -316,7 +322,7 @@ class SelectEpisodesStep extends StatelessWidget {
                         decimal: true,
                       ),
                       decoration: InputDecoration(
-                        labelText: 'To Episode',
+                        labelText: 'To ${state.itemLabel}',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
