@@ -44,7 +44,7 @@ function showFiles(){
  const list=byId('selected');list.textContent='';for(const file of files){const li=document.createElement('li');li.textContent=file.name;list.appendChild(li);}
 }
 choose.addEventListener('change',()=>{
- for(const file of Array.from(choose.files))if(!files.some(f=>f.name===file.name&&f.size===file.size&&f.lastModified===file.lastModified))files.push(file);
+ for(const file of Array.from(choose.files))files.push(file);
  choose.value='';clearDownload();showFiles();byId('progress').value=0;byId('status').textContent='Files stay on your device. Add any remaining parts, then press Verify & join APK.';
 });
 reset.addEventListener('click',()=>{files=[];choose.value='';clearDownload();showFiles();byId('progress').value=0;byId('status').textContent='Files cleared. Add the parts again.';});
