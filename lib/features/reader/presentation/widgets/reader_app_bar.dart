@@ -8,6 +8,7 @@ import 'reader_theme_info.dart';
 
 class ReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String mediaTitle;
+  final List<Widget> actions;
   final num episodeNumber;
   final ReaderThemeInfo themeInfo;
   final double uiRoundness;
@@ -15,6 +16,7 @@ class ReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
   const ReaderAppBar({
     super.key,
     required this.mediaTitle,
+    this.actions = const [],
     required this.episodeNumber,
     required this.themeInfo,
     required this.uiRoundness,
@@ -135,6 +137,7 @@ class ReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  ...actions,
                   IconButton(
                     style: IconButton.styleFrom(
                       minimumSize: const Size(42, 42),

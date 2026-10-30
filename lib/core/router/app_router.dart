@@ -330,8 +330,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/reader',
         builder: (context, state) {
-          final mode = state.extra as ReaderModeOnline;
-          return ReaderScreen(key: ValueKey(mode.episode.id), mode: mode);
+          final mode = state.extra as ReaderMode;
+          return ReaderScreen(
+            key: ValueKey(
+              '${mode.runtimeType}_${mode.sourceInfo.id}_${mode.episode.id}',
+            ),
+            mode: mode,
+          );
         },
       ),
       GoRoute(

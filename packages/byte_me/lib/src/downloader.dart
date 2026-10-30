@@ -17,8 +17,8 @@ class ByteMe {
   final int maxConcurrentDownloads;
 
   final HttpClient _httpClient;
-  final DownloadEngine _engine;
-  final HlsDownloader _hlsDownloader;
+  late final DownloadEngine _engine;
+  late final HlsDownloader _hlsDownloader;
 
   final Map<String, DownloadTask> _tasks = {};
   final Queue<_PendingJob> _queue = Queue();
@@ -36,9 +36,13 @@ class ByteMe {
   ///
   /// The shared [HttpClient] handles connection pooling automatically.
   ByteMe({this.maxConcurrentDownloads = 3})
-    : _httpClient = HttpClient(),
-      _engine = DownloadEngine(HttpClient()),
-      _hlsDownloader = HlsDownloader(HttpClient());
+    : _httpClient = (HttpClient()
+        ..connectionTimeout = const Duration(seconds: 20)
+        ..idleTimeout = const Duration(seconds: 30)
+        ..maxConnectionsPerHost = 12) {
+    _engine = DownloadEngine(_httpClient);
+    _hlsDownloader = HlsDownloader(_httpClient);
+  }
 
   // ---------------------------------------------------------------------------
   // Public API

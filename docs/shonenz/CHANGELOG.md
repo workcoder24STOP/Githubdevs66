@@ -1,3 +1,30 @@
+# ShonenZ+ 0.2.2 — one reader, stronger downloads
+
+- Replace the separate offline reader screen with the application's existing
+  immersive ReaderScreen. Offline chapters use the same settings, gestures,
+  Webtoon/LTR/RTL modes, page overlay and chapter menu as online reading.
+- Implement a real ReaderModeOffline backed by the saved download record. Read
+  local files without resolving extensions or invoking tracker/Discord requests;
+  retain resume position, bookmarks and title history. Missing/empty files show
+  a recoverable error. The chapter menu lists only this title's completed items.
+- Correct adjacent chapter selection when an online source index is descending.
+- Download manga pages in a bounded pool (three per chapter), reuse connections,
+  preserve page order, serialize checkpoints and observe rate-limit delays.
+  Pause interrupts stalled page bodies and retains recoverable checkpoints.
+- Add explicit internal/1DM choices on the manga download sheet, plus a handoff
+  action on queued/paused chapter rows. One chapter's ordered page links and
+  request headers are sent using the existing Android 1DM batch integration.
+- Reject empty or unsafe import identities before any storage-folder operation.
+- Keep 1DM records paused until import. Associate completed images/CBZ/ZIP with
+  the original chapter; reject missing pages, HTML disguised as images and
+  oversized imports. Different per-page headers require the internal downloader.
+- Share and close the anime engine's HTTP client correctly. Abort active HLS
+  segment requests on pause or worker failure, bound worker counts, and exclude
+  failed-attempt bytes from progress. Persist completion before notifications.
+- Continue using the same application ID and signing key; update in place from
+  0.2.0/0.2.1. This release does not guarantee faster remote hosts or that every
+  possible application/device defect has been eliminated.
+
 # ShonenZ+ 0.2.1 — readers and offline downloads
 
 - Repair blank Webtoon pages: reserve image space while decoding, render local

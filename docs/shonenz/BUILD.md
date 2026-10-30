@@ -38,7 +38,7 @@ archives. The key is generated as RSA4096 with a random password stored in a
 private directory. For this task that directory is
 `$HOME/.local/share/shonenz-signing/` (0700; key/password 0600).
 
-The release package is `io.github.workcoder24stop.shonenzplus`, version0.2.1 (base version code2; ARM64 split2002, x64 split4002).
+The release package is `io.github.workcoder24stop.shonenzplus`, version0.2.2 (base version code3; ARM64 split2003, x64 split4003).
 The launcher is ShonenZ+. It installs alongside ShonenZ and cannot update the
 original app because both application ID and signature differ.
 
@@ -58,7 +58,7 @@ Outputs: `build/app/outputs/flutter-apk/`. Verify signatures with
 Create transport pieces with:
 
 ```sh
-python3 scripts/package-release.py /path/ShonenZPlus-0.2.1-arm64.apk /path/release
+python3 scripts/package-release.py /path/ShonenZPlus-0.2.2-arm64.apk /path/release
 ```
 
 A new key makes a different signature. Reproducing the install identity requires

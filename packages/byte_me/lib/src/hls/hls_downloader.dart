@@ -48,9 +48,19 @@ class HlsDownloader {
 
     bool cancelled = false;
     Completer<void>? pauseCompleter;
+    final stopped = Completer<void>();
+    final activeRequests = <HttpClientRequest>{};
+    Object? workerError;
+    void abortActiveRequests() {
+      if (!stopped.isCompleted) stopped.complete();
+      for (final request in activeRequests.toList()) {
+        request.abort();
+      }
+    }
 
     task.attachCancelCallback(() {
       cancelled = true;
+      abortActiveRequests();
       if (pauseCompleter != null && !pauseCompleter!.isCompleted)
         pauseCompleter!.complete();
     });
@@ -120,6 +130,7 @@ class HlsDownloader {
       // Cancel/pause wiring
       task.attachCancelCallback(() {
         cancelled = true;
+        abortActiveRequests();
         if (pauseCompleter != null && !pauseCompleter!.isCompleted)
           pauseCompleter!.complete();
       });
@@ -129,15 +140,15 @@ class HlsDownloader {
       final segmentFiles = List<File?>.filled(segments.length, null);
 
       Future<void> worker() async {
-        while (segmentIterator.moveNext()) {
-          if (cancelled) return;
+        while (workerError == null && segmentIterator.moveNext()) {
+          if (cancelled || workerError != null) return;
 
           // Handle pause
           if (task.status == DownloadStatus.paused) {
             pauseCompleter = Completer<void>();
             await pauseCompleter!.future;
             pauseCompleter = null;
-            if (cancelled) return;
+            if (cancelled || workerError != null) return;
           }
 
           final (index, segment) = segmentIterator.current;
@@ -173,14 +184,21 @@ class HlsDownloader {
           String? lastErrorMessage;
 
           for (int attempt = 0; attempt <= retry.maxRetries; attempt++) {
-            if (cancelled) return;
+            if (cancelled || workerError != null) return;
+            var attemptBytes = 0;
             try {
-              await _downloadSegment(segment.url, partFile, effectiveHeaders, (
-                bytes,
-              ) {
-                totalBytesReceived += bytes;
-                emitProgress();
-              });
+              await _downloadSegment(
+                segment.url,
+                partFile,
+                effectiveHeaders,
+                (bytes) {
+                  attemptBytes += bytes;
+                  totalBytesReceived += bytes;
+                  emitProgress();
+                },
+                activeRequests,
+                () => cancelled || workerError != null,
+              );
 
               if (partFile.existsSync()) {
                 await partFile.rename(segFile.path);
@@ -188,7 +206,9 @@ class HlsDownloader {
               success = true;
               break;
             } catch (e) {
-              if (cancelled) return;
+              totalBytesReceived -= attemptBytes;
+              if (cancelled || workerError != null) return;
+              emitProgress();
               lastErrorMessage = _friendlyErrorMessage(e);
 
               if (attempt < retry.maxRetries) {
@@ -200,9 +220,15 @@ class HlsDownloader {
                         milliseconds:
                             2500 * (attempt + 1) + Random().nextInt(1500),
                       );
-                  await Future.delayed(delay);
+                  await Future.any([
+                    Future<void>.delayed(delay),
+                    stopped.future,
+                  ]);
                 } else {
-                  await Future.delayed(retry.delayFor(attempt + 1));
+                  await Future.any([
+                    Future<void>.delayed(retry.delayFor(attempt + 1)),
+                    stopped.future,
+                  ]);
                 }
               }
             }
@@ -223,8 +249,18 @@ class HlsDownloader {
       }
 
       // Launch worker pool
-      final workers = List.generate(maxConcurrentSegments, (_) => worker());
+      final workers = List.generate(maxConcurrentSegments.clamp(1, 8), (
+        _,
+      ) async {
+        try {
+          await worker();
+        } catch (e) {
+          workerError ??= e;
+          abortActiveRequests();
+        }
+      });
       await Future.wait(workers);
+      if (!cancelled && workerError != null) throw workerError!;
 
       if (cancelled) {
         throw _CancelledException();
@@ -334,51 +370,66 @@ class HlsDownloader {
     File destination,
     Map<String, String> headers,
     void Function(int bytesReceived) onBytesReceived,
+    Set<HttpClientRequest> activeRequests,
+    bool Function() isStopped,
   ) async {
     final request = await _client
         .getUrl(Uri.parse(url))
         .timeout(const Duration(seconds: 20));
-    headers.forEach((k, v) => request.headers.set(k, v));
-    final response = await request.close().timeout(const Duration(seconds: 30));
-
-    if (response.statusCode == 429 || response.statusCode == 503) {
-      final retryAfterHeader = response.headers.value('retry-after');
-      Duration? retryAfter;
-      if (retryAfterHeader != null) {
-        final parsed = int.tryParse(retryAfterHeader);
-        if (parsed != null && parsed > 0 && parsed <= 60) {
-          retryAfter = Duration(seconds: parsed);
-        }
-      }
-      await response.drain<void>();
-      throw RateLimitException(response.statusCode, retryAfter);
-    }
-
-    if (response.statusCode != 200 && response.statusCode != 206) {
-      await response.drain<void>();
-      throw HttpException(
-        'HTTP ${response.statusCode}: ${response.reasonPhrase}',
-      );
-    }
-
-    final sink = destination.openWrite();
-    var received = 0;
+    activeRequests.add(request);
     try {
-      await for (final chunk in response.timeout(const Duration(seconds: 30))) {
-        received += chunk.length;
-        sink.add(chunk);
-        onBytesReceived(chunk.length);
+      if (isStopped()) {
+        request.abort();
+        throw _CancelledException();
       }
-      await sink.flush();
-      if (received == 0 ||
-          (response.contentLength >= 0 &&
-              received != response.contentLength &&
-              response.compressionState !=
-                  HttpClientResponseCompressionState.decompressed)) {
-        throw HttpException('Incomplete HLS segment');
+      headers.forEach((k, v) => request.headers.set(k, v));
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode == 429 || response.statusCode == 503) {
+        final retryAfterHeader = response.headers.value('retry-after');
+        Duration? retryAfter;
+        if (retryAfterHeader != null) {
+          final parsed = int.tryParse(retryAfterHeader);
+          if (parsed != null && parsed > 0 && parsed <= 60) {
+            retryAfter = Duration(seconds: parsed);
+          }
+        }
+        await response.drain<void>();
+        throw RateLimitException(response.statusCode, retryAfter);
+      }
+
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        await response.drain<void>();
+        throw HttpException(
+          'HTTP ${response.statusCode}: ${response.reasonPhrase}',
+        );
+      }
+
+      final sink = destination.openWrite();
+      var received = 0;
+      try {
+        await for (final chunk in response.timeout(
+          const Duration(seconds: 30),
+        )) {
+          received += chunk.length;
+          sink.add(chunk);
+          onBytesReceived(chunk.length);
+        }
+        await sink.flush();
+        if (received == 0 ||
+            (response.contentLength >= 0 &&
+                received != response.contentLength &&
+                response.compressionState !=
+                    HttpClientResponseCompressionState.decompressed)) {
+          throw HttpException('Incomplete HLS segment');
+        }
+      } finally {
+        await sink.close();
       }
     } finally {
-      await sink.close();
+      activeRequests.remove(request);
     }
   }
 

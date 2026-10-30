@@ -1,3 +1,4 @@
+import 'package:shonenx/features/offline/image_file.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -151,6 +152,13 @@ class OfflineCatalog {
         target?.titleKey ?? key(['import', manga, title.trim().toLowerCase()]);
     final identity =
         target?.catalogKey ?? key([canonicalTitle, season, number]);
+    // Never let damaged legacy metadata address the offline storage root or a
+    // parent directory during the replace/import step below.
+    if (!RegExp(r'^[a-zA-Z0-9_-]{1,128}$').hasMatch(identity)) {
+      throw ArgumentError(
+        'This download has invalid metadata. Create a new import entry instead.',
+      );
+    }
     final existing = await repo.getByCatalogKey(identity);
     if (existing?.status == DownloadStatus.completed) {
       throw StateError(
@@ -171,6 +179,14 @@ class OfflineCatalog {
       await stage.create(recursive: true);
       final local = await Isolate.run(() => _copyImport(files, staging, manga));
       if (local.isEmpty) throw StateError('No supported complete files found.');
+      if (manga && target != null && target.pagesJson != '[]') {
+        final expected = (jsonDecode(target.pagesJson) as List).length;
+        if (expected > 0 && local.length != expected) {
+          throw StateError(
+            'This chapter needs $expected pages, but ${local.length} were selected. Finish the 1DM downloads and select all pages.',
+          );
+        }
+      }
       if (await Directory(destination).exists()) {
         // Never overwrite a completed chapter: the check above is authoritative.
         await Directory(destination).delete(recursive: true);
@@ -336,6 +352,11 @@ class OfflineCatalog {
           if (await File(p.join(dest, name)).length() == 0) {
             throw StateError('Archive contains an empty page.');
           }
+          if (!await isSupportedImageFile(File(p.join(dest, name)))) {
+            throw StateError(
+              'Archive contains a damaged or unsupported image.',
+            );
+          }
           result.add(name);
         }
       } finally {
@@ -357,6 +378,10 @@ class OfflineCatalog {
               .compareTo(videos.contains(p.extension(b).toLowerCase()) ? 0 : 1),
         );
       }
+      if (manga && sorted.length > 5000) {
+        throw StateError('Too many pages in one chapter.');
+      }
+      var totalSize = 0;
       for (var i = 0; i < sorted.length; i++) {
         final ext = p.extension(sorted[i]).toLowerCase();
         if (!(manga ? images : {...videos, ...subtitles}).contains(ext)) {
@@ -365,7 +390,17 @@ class OfflineCatalog {
           );
         }
         final file = File(sorted[i]);
-        if (await file.length() == 0) {
+        final size = await file.length();
+        totalSize += size;
+        if (manga &&
+            (size > 64 * 1024 * 1024 ||
+                totalSize > 2 * 1024 * 1024 * 1024 ||
+                !await isSupportedImageFile(file))) {
+          throw StateError(
+            'Unsupported, damaged or oversized page: ${p.basename(sorted[i])}',
+          );
+        }
+        if (size == 0) {
           throw StateError('Empty file: ${p.basename(sorted[i])}');
         }
         final name = '${i.toString().padLeft(6, '0')}$ext';

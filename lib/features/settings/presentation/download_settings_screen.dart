@@ -174,7 +174,7 @@ class DownloadSettingsScreen extends ConsumerWidget {
                           leading: svgIcon,
                           title: 'Use External Downloader (1DM)',
                           subtitle:
-                              'Send links to external apps instead of the built-in engine',
+                              'Send anime streams to 1DM. For manga, use Send chapter to 1DM in the chapter download menu.',
                           value: prefs.useOneDM,
                           onChanged: (val) {
                             prefsNotifier.setUseOneDM(val);
@@ -202,7 +202,7 @@ class DownloadSettingsScreen extends ConsumerWidget {
                                     child: const Text(
                                       '1DM (Internet Download Manager) is a popular third-party Android download manager app. '
                                       'It supports up to 32 parallel download connections, background downloads, and smart error recovery.\n\n'
-                                      'If installed, ShonenZ+ can send episode download streams directly to 1DM.',
+                                      'ShonenZ+ can send anime streams or manga page batches to 1DM. Manga handoff is selected per chapter in Downloads. Import completed files into that same chapter afterward.',
                                     ),
                                     actions: [
                                       TextButton(

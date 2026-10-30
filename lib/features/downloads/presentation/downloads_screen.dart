@@ -161,10 +161,22 @@ class OfflineTitleScreen extends ConsumerWidget {
                           value: 'resume',
                           child: Text('Resume / retry'),
                         ),
-                      if (!complete)
+                      if (!complete &&
+                          t.isManga &&
+                          !t.imported &&
+                          t.status != DownloadStatus.downloading)
                         const PopupMenuItem(
+                          value: '1dm',
+                          child: Text('Send chapter to 1DM'),
+                        ),
+                      if (!complete)
+                        PopupMenuItem(
                           value: 'import',
-                          child: Text('Import completed 1DM file'),
+                          child: Text(
+                            t.isManga
+                                ? 'Import completed 1DM files'
+                                : 'Import completed 1DM file',
+                          ),
                         ),
                       if (complete && !t.isManga)
                         const PopupMenuItem(
@@ -186,6 +198,19 @@ class OfflineTitleScreen extends ConsumerWidget {
                             await manager.pauseDownload(t.id);
                           case 'resume':
                             await manager.startDownload(t);
+                          case '1dm':
+                            final sent = await manager.sendMangaToOneDM(t);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    sent
+                                        ? 'Chapter pages sent to 1DM. Import all completed images into this chapter afterward.'
+                                        : '1DM is not installed or could not open the chapter.',
+                                  ),
+                                ),
+                              );
+                            }
                           case 'import':
                             if (context.mounted) {
                               await showOfflineImport(context, ref, target: t);

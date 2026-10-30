@@ -1,8 +1,8 @@
-# ShonenZ+ 0.2.1 — install and keep your signing key
+# ShonenZ+ 0.2.2 — install and keep your signing key
 
-## Update from 0.2.0
+## Update from 0.2.0 or 0.2.1
 
-Install the joined 0.2.1 APK over ShonenZ+ 0.2.0. **Do not uninstall first**:
+Install the joined 0.2.2 APK over ShonenZ+ 0.2.0 or 0.2.1. **Do not uninstall first**:
 Android keeps this app's downloads and settings when updating with the same key.
 The original ShonenZ is a separate application and is not replaced.
 
@@ -10,29 +10,56 @@ The original ShonenZ is a separate application and is not replaced.
 
 Requires Android7.0/API24 or newer on an ARM64 device.
 
-1. Download `apk/join-apk.html` and all three `ShonenZPlus-0.2.1-arm64.part...` files.
+1. Download `apk/join-apk.html` and all three `ShonenZPlus-0.2.2-arm64.part...` files.
 2. Open the downloaded HTML file in Chrome, Firefox, or another full browser.
    Use **Add APK parts** to select the three parts together or one at a time.
    Press **Verify & join APK**, then **Save signed APK**. This works offline;
    files stay local. Renamed parts are recognized by their contents.
-3. Save `ShonenZPlus-0.2.1-arm64.apk` and open it on the Android device. If Android
+3. Save `ShonenZPlus-0.2.2-arm64.apk` and open it on the Android device. If Android
    asks, permit installation from the browser/file manager you selected.
 4. The separate app is **ShonenZ+**, ID `io.github.workcoder24stop.shonenzplus`.
    It installs alongside the original ShonenZ. These parts are byte chunks of one
    APK, not Android split-install APKs; never try to install an individual part.
 
 APK SHA-256:
-`0133b9d3f2f7b0d61aaf2cae702a607fc3f5f70acbdc81cf89e6bb95776b119d`
+`25ab1d7eae42b02a34a97284e9246ddb663e6768aeca360fdbeae7e8ad9bbb4a`
 
 Signing certificate SHA-256:
 `d6e4254f660c2830fd36f1349bc000650c22b1ca17b907f3872b6e23de338db6`
 
-Use only the three **0.2.1-arm64** parts for the APK joiner. A **source** part
+Use only the three **0.2.2-arm64** parts for the APK joiner. A **source** part
 contains project code and cannot replace an APK part. If a wrong file is selected,
 tap its **Remove** button, add the required APK part, and verify again. If the
 correct file still fails verification, download that part again.
 If your phone cannot open the HTML in a browser or save the result, use the
 offline joiner on a computer and copy the finished APK to the phone.
+
+## The app reader now works offline
+
+Downloaded chapters open in the same immersive reader as online chapters. Tap
+in the center to show its controls; **Reader Settings** changes Webtoon, LTR/RTL,
+scaling and background. The chapter button lists this title's downloaded
+chapters, and the bookmark button saves/jumps between local bookmarks. No source
+extension is needed to read completed local files. Missing or damaged old files
+must be imported or downloaded again.
+
+## Manga through 1DM
+
+1. Tap a chapter's download action and choose **Send chapter to 1DM**. This
+   requires a supported installed 1DM app. You can also use that action in an
+   unfinished chapter's menu in Downloads; pause an active chapter first.
+2. Accept the page batch in 1DM and finish downloading **all** its ordered
+   `SZ-...` image files. Keep ShonenZ+ open if the source uses a local image
+   bridge. A handoff stays paused in ShonenZ+ until its files are imported.
+3. Open the same title/chapter in Downloads and choose **Import completed 1DM
+   files**. Select all that chapter's images, or its complete CBZ/ZIP. The app
+   validates page count, formats and numbering before associating local files.
+4. Open that chapter in the normal app reader, including with no internet.
+
+Sources requiring different headers for individual pages cannot use this 1DM
+batch interface: choose **Download chapter** for those sources. Actual 1DM app
+compatibility still requires Android device acceptance. There is no automatic
+access to 1DM's private folders or documented completion callback.
 
 ## Title pages, scanlators and batches
 

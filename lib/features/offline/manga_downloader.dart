@@ -1,3 +1,4 @@
+import 'package:shonenx/features/offline/image_file.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:shonenx/source_engine/models/chapter_page.dart';
@@ -13,6 +14,7 @@ import 'package:shonenx/features/downloads/domain/models/download_task.dart';
 class MangaDownloader {
   final DownloadTask task;
   final DownloadRepository repo;
+  final int pageConcurrency;
   final Future<List<ChapterPage>> Function()? resolvePages;
   final _stopped = Completer<void>();
   bool _paused = false;
@@ -24,7 +26,12 @@ class MangaDownloader {
   }
 
   HttpClient? _client;
-  MangaDownloader(this.task, this.repo, {this.resolvePages});
+  MangaDownloader(
+    this.task,
+    this.repo, {
+    this.resolvePages,
+    this.pageConcurrency = 3,
+  });
   void pause() {
     _paused = true;
     if (!_stopped.isCompleted) _stopped.complete();
@@ -78,10 +85,14 @@ class MangaDownloader {
       task.status = DownloadStatus.downloading;
       task.errorReason = null;
       await repo.putTask(task);
-      final local = <String>[];
+      final local = List<String?>.filled(pages.length, null);
+      final sizes = List<int>.filled(pages.length, 0);
+      Object? failure;
+      var next = 0;
+      var blockedUntil = DateTime.fromMillisecondsSinceEpoch(0);
+      Future<void> checkpoint = Future.value();
       task.downloadedBytes = 0;
-      for (var i = 0; i < pages.length; i++) {
-        if (_paused) break;
+      Future<void> page(int i) async {
         final file = File(
           p.join(task.savePath, '${i.toString().padLeft(6, '0')}.image'),
         );
@@ -98,8 +109,16 @@ class MangaDownloader {
           final partial = File('${file.path}.part');
           Object? lastError;
           for (var attempt = 0; attempt < 3; attempt++) {
-            if (_paused) break;
+            if (_paused || failure != null) return;
             try {
+              final remaining = blockedUntil.difference(DateTime.now());
+              if (remaining > Duration.zero) {
+                await Future.any([
+                  Future<void>.delayed(remaining),
+                  _stopped.future,
+                ]);
+                if (_paused || failure != null) return;
+              }
               final rawUrl = pages[i]['url'] as String;
               final uri = Uri.parse(rawUrl.split('#').first);
               if (uri.scheme != 'https' && uri.scheme != 'http') {
@@ -125,6 +144,17 @@ class MangaDownloader {
               final response = await request.close().timeout(
                 const Duration(seconds: 30),
               );
+              if (response.statusCode == 429 || response.statusCode == 503) {
+                final seconds =
+                    int.tryParse(
+                      response.headers.value('retry-after') ?? '',
+                    )?.clamp(1, 60) ??
+                    3;
+                blockedUntil = DateTime.now().add(Duration(seconds: seconds));
+                await response.drain<void>().timeout(
+                  const Duration(seconds: 10),
+                );
+              }
               if (response.statusCode != 200) {
                 throw HttpException(
                   'Page ${i + 1}: HTTP ${response.statusCode}',
@@ -167,19 +197,44 @@ class MangaDownloader {
               lastError = e;
               if (await partial.exists()) await partial.delete();
               if (!_paused && attempt < 2) {
-                await Future<void>.delayed(Duration(seconds: 2 << attempt));
+                await Future.any([
+                  Future<void>.delayed(Duration(seconds: 2 << attempt)),
+                  _stopped.future,
+                ]);
               }
             }
           }
           if (!_paused && lastError != null) throw lastError;
         }
-        if (_paused) break;
-        local.add(file.path);
-        task.localPages = List.of(local);
-        task.progress = local.length / pages.length;
-        task.downloadedBytes += await file.length();
-        await repo.putTask(task);
+        if (_paused || failure != null) return;
+        local[i] = file.path;
+        sizes[i] = await file.length();
+        checkpoint = checkpoint.then((_) async {
+          task.localPages = local.whereType<String>().toList();
+          task.progress = task.localPages.length / pages.length;
+          task.downloadedBytes = sizes.fold(0, (a, b) => a + b);
+          await repo.putTask(task);
+        });
+        await checkpoint;
       }
+
+      Future<void> worker() async {
+        while (!_paused && failure == null && next < pages.length) {
+          final index = next++;
+          try {
+            await page(index);
+          } catch (e) {
+            failure ??= e;
+            _client?.close(force: true);
+          }
+        }
+      }
+
+      await Future.wait(
+        List.generate(pageConcurrency.clamp(1, 4), (_) => worker()),
+      );
+      await checkpoint;
+      if (!_paused && failure != null) throw failure!;
       task.status = _paused ? DownloadStatus.paused : DownloadStatus.completed;
       if (!_paused) task.progress = 1;
     } catch (e) {
@@ -191,12 +246,5 @@ class MangaDownloader {
     }
   }
 
-  static bool _isImage(List<int> b) =>
-      b.length >= 12 &&
-      ((b[0] == 0xff && b[1] == 0xd8) ||
-          (b[0] == 137 && b[1] == 80 && b[2] == 78 && b[3] == 71) ||
-          ascii.decode(b.take(3).toList(), allowInvalid: true) == 'GIF' ||
-          (ascii.decode(b.take(4).toList(), allowInvalid: true) == 'RIFF' &&
-              ascii.decode(b.sublist(8, 12), allowInvalid: true) == 'WEBP') ||
-          ascii.decode(b.sublist(4, 12), allowInvalid: true) == 'ftypavif');
+  static bool _isImage(List<int> bytes) => isSupportedImageHeader(bytes);
 }

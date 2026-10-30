@@ -46,7 +46,8 @@ class DownloadSheet extends ConsumerStatefulWidget {
         : episode.number.toString();
     return AppBottomSheet.show(
       context: context,
-      title: 'Download Episode $epNumStr',
+      title:
+          'Download ${media.type == MediaType.MANGA ? 'Chapter' : 'Episode'} $epNumStr',
       titleIcon: Icons.download_rounded,
       child: DownloadSheet(episode: episode, source: source, media: media),
     );
@@ -59,6 +60,7 @@ class DownloadSheet extends ConsumerStatefulWidget {
 class _DownloadSheetState extends ConsumerState<DownloadSheet> {
   List<VideoServer>? _servers;
   String? _error;
+  bool _mangaBusy = false;
 
   final Map<String, List<VideoStream>> _streamsCache = {};
   final Map<String, String> _streamErrors = {};
@@ -70,21 +72,40 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
   void initState() {
     super.initState();
     if (widget.media.type == MediaType.MANGA) {
-      Future.microtask(_downloadManga);
       return;
     }
     _loadServers();
   }
 
-  Future<void> _downloadManga() async {
-    if (mounted) setState(() => _error = null);
+  Future<void> _downloadManga({bool external = false}) async {
+    if (_mangaBusy) return;
+    if (mounted) {
+      setState(() {
+        _error = null;
+        _mangaBusy = true;
+      });
+    }
     try {
-      final task = await OfflineCatalog.mangaTask(widget.media, widget.source, widget.episode);
-      await ref.read(downloadManagerProvider.future);
-      await ref.read(downloadManagerProvider.notifier).startDownload(task);
+      final task = await OfflineCatalog.mangaTask(
+        widget.media,
+        widget.source,
+        widget.episode,
+      );
+      final manager = await ref.read(downloadManagerProvider.future);
+      if (external) {
+        if (!await manager.sendMangaToOneDM(task)) {
+          throw StateError(
+            '1DM could not open. Use the internal downloader or install a supported 1DM version.',
+          );
+        }
+      } else {
+        await manager.startDownload(task);
+      }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _mangaBusy = false);
     }
   }
 
@@ -207,8 +228,60 @@ class _DownloadSheetState extends ConsumerState<DownloadSheet> {
     final isOneDMInstalledAsync = ref.watch(isOneDMInstalledProvider);
     final isOneDMInstalled = isOneDMInstalledAsync.value ?? false;
 
+    if (widget.media.type == MediaType.MANGA) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Chapter ${widget.episode.number}',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Internal downloads are linked to this title automatically. For 1DM, import all completed page images or a CBZ/ZIP back into the same chapter in Downloads.',
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_error!, style: TextStyle(color: cs.error)),
+              ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _mangaBusy ? null : () => _downloadManga(),
+              icon: const Icon(Icons.download),
+              label: const Text('Download chapter'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _mangaBusy || !isOneDMInstalled
+                  ? null
+                  : () => _downloadManga(external: true),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Send chapter to 1DM'),
+            ),
+            if (!isOneDMInstalled)
+              const Text(
+                '1DM is not installed or is unavailable on this device.',
+              ),
+            if (_mangaBusy)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+          ],
+        ),
+      );
+    }
     if (_error != null) {
-      return _ErrorState(message: _error!, onRetry: widget.media.type == MediaType.MANGA ? _downloadManga : _loadServers);
+      return _ErrorState(
+        message: _error!,
+        onRetry: widget.media.type == MediaType.MANGA
+            ? _downloadManga
+            : _loadServers,
+      );
     }
     if (_servers == null) {
       return const SizedBox(

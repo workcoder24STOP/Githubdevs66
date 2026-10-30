@@ -1,3 +1,5 @@
+import 'package:shonenx/features/offline/manga_handoff.dart';
+import 'package:shonenx/source_engine/models/chapter_page.dart';
 import 'package:shonenx/features/offline/catalog_snapshot.dart';
 import 'dart:async';
 import 'dart:io';
@@ -74,6 +76,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
     _manager = bm.ByteMe(maxConcurrentDownloads: prefs.concurrentDownloads);
 
     ref.onDispose(() {
+      _manager.dispose();
       for (final job in _mangaJobs.values) {
         job.pause();
       }
@@ -157,6 +160,55 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
     }
   }
 
+  Future<List<ChapterPage>> _resolveMangaPages(DownloadTask task) {
+    final source = ref.read(
+      mangaSourceProvider(
+        SourceInfo(
+          id: task.sourceId,
+          name: task.sourceName,
+          type: SourceType.extension,
+          mediaType: MediaType.MANGA,
+          baseUrl: task.sourceBaseUrl,
+        ),
+      ),
+    );
+    return source.getPages(task.itemId).timeout(const Duration(seconds: 45));
+  }
+
+  Future<bool> sendMangaToOneDM(DownloadTask task) async {
+    if (!task.isManga ||
+        task.imported ||
+        task.status == DownloadStatus.completed) {
+      throw StateError('Select an unfinished source chapter for 1DM.');
+    }
+    if (_mangaJobs.containsKey(task.id)) await pauseDownload(task.id);
+    if (!await OneDMService.instance.isOneDMAvailable()) return false;
+    final pages = await _resolveMangaPages(task);
+    final plan = MangaHandoff.prepare(task, pages);
+    task.pagesJson = plan.pagesJson;
+    task.status = DownloadStatus.paused;
+    task.errorReason =
+        'Opening 1DM. Import completed pages into this chapter afterward.';
+    await repo.putTask(task);
+    final launched = await OneDMService.instance.downloadBatch(
+      urls: plan.urls,
+      fileNames: plan.names,
+      headers: plan.headers,
+    );
+    if (!launched) {
+      task.errorReason =
+          '1DM could not open. Resume with the internal downloader or try the handoff again.';
+      await repo.putTask(task);
+      return false;
+    }
+    task.pagesJson = plan.pagesJson;
+    task.status = DownloadStatus.paused;
+    task.errorReason =
+        'Sent ${pages.length} pages to 1DM. Keep ShonenZ+ open if the source uses a local image bridge. When finished, choose Import completed 1DM files on this chapter and select all its SZ- page images or a CBZ/ZIP.';
+    await repo.putTask(task);
+    return true;
+  }
+
   Future<void> _startManga(DownloadTask task) async {
     final previous = _mangaJobs[task.id];
     if (previous != null) {
@@ -171,22 +223,7 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
     final job = MangaDownloader(
       task,
       repo,
-      resolvePages: () {
-        final source = ref.read(
-          mangaSourceProvider(
-            SourceInfo(
-              id: task.sourceId,
-              name: task.sourceName,
-              type: SourceType.extension,
-              mediaType: MediaType.MANGA,
-              baseUrl: task.sourceBaseUrl,
-            ),
-          ),
-        );
-        return source
-            .getPages(task.itemId)
-            .timeout(const Duration(seconds: 45));
-      },
+      resolvePages: () => _resolveMangaPages(task),
     );
     _mangaJobs[task.id] = job;
     await _syncForeground();
@@ -461,10 +498,14 @@ class DownloadManagerNotifier extends AsyncNotifier<DownloadManagerNotifier> {
           task.status = DownloadStatus.completed;
           task.errorReason = null;
           if (!task.isM3u8) await _saveSubtitleSidecars(task);
-          await notif.showDownloadComplete(id: dbTaskId, title: title);
           task.progress = 1;
           await repo.putTask(task);
           _cleanupJob(dbTaskId, job.id);
+          try {
+            await notif.showDownloadComplete(id: dbTaskId, title: title);
+          } catch (_) {
+            /* Notification permission cannot invalidate a saved file. */
+          }
           return;
         case bm.DownloadStatus.failed:
           task.status = DownloadStatus.failed;

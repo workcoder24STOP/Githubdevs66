@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shonenx/features/downloads/domain/models/download_task.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,7 +26,7 @@ import 'widgets/reader_theme_info.dart';
 import 'widgets/reader_webtoon_view.dart';
 
 class ReaderScreen extends ConsumerStatefulWidget {
-  final ReaderModeOnline mode;
+  final ReaderMode mode;
 
   const ReaderScreen({super.key, required this.mode});
 
@@ -78,17 +79,20 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _pageController.dispose();
     _disableImmersiveMode();
     try {
-      ref
-          .read(discordRpcProvider.notifier)
-          .updateMediaPresence(widget.mode.media);
+      if (widget.mode is! ReaderModeOffline) {
+        ref
+            .read(discordRpcProvider.notifier)
+            .updateMediaPresence(widget.mode.media);
+      }
     } catch (_) {}
     try {
-      WakelockPlus.disable();
+      WakelockPlus.disable().catchError((Object _) {});
     } catch (_) {}
     super.dispose();
   }
 
   void _updateDiscordRpc(ReaderState state) {
+    if (widget.mode is ReaderModeOffline) return;
     ref
         .read(discordRpcProvider.notifier)
         .updateMangaPresence(
@@ -117,7 +121,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   void _tryEnableWakelock() {
     try {
       if (ref.read(readerPrefsProvider).keepScreenOn) {
-        WakelockPlus.enable();
+        WakelockPlus.enable().catchError((Object _) {});
       }
     } catch (_) {}
   }
@@ -178,14 +182,62 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return false;
   }
 
+  List<DownloadTask> _localChapters() =>
+      ref.read(readerProvider(widget.mode)).offlineChapters;
+
+  DownloadTask? _adjacentLocal(bool next) {
+    final candidates = _localChapters()
+        .where(
+          (t) => next
+              ? (t.season > (widget.mode.episode.season ?? 1) ||
+                    t.season == (widget.mode.episode.season ?? 1) &&
+                        t.episodeNumber > widget.mode.episode.number)
+              : (t.season < (widget.mode.episode.season ?? 1) ||
+                    t.season == (widget.mode.episode.season ?? 1) &&
+                        t.episodeNumber < widget.mode.episode.number),
+        )
+        .toList();
+    if (candidates.isEmpty) return null;
+    final first = next ? candidates.first : candidates.last;
+    final releases = candidates.where(
+      (t) => t.season == first.season && t.episodeNumber == first.episodeNumber,
+    );
+    final preferred = ref.read(
+      preferredScanlatorProvider(widget.mode.media.id),
+    );
+    return releases.where((t) => t.scanlator == preferred).firstOrNull ??
+        releases
+            .where(
+              (t) =>
+                  t.sourceId == widget.mode.sourceInfo.id &&
+                  t.scanlator == widget.mode.episode.scanlator,
+            )
+            .firstOrNull ??
+        first;
+  }
+
+  void _openLocal(DownloadTask task, {bool resume = false}) {
+    context.replace(
+      '/reader',
+      extra: ReaderModeOffline(task: task, startPosition: resume ? null : 1),
+    );
+  }
+
   void _skipToChapter({required bool next}) {
+    if (widget.mode is ReaderModeOffline) {
+      final target = _adjacentLocal(next);
+      if (target != null) _openLocal(target);
+      return;
+    }
     final episodesState = ref.read(episodesListProvider(_matchArgs)).value;
     if (episodesState == null) return;
 
     final currentNum = widget.mode.episode.number;
-    final adjacentEps = episodesState.episodes
-        .where((e) => next ? e.number > currentNum : e.number < currentNum)
-        .toList();
+    final adjacentEps =
+        episodesState.episodes
+            .where((e) => next ? e.number > currentNum : e.number < currentNum)
+            .toList()
+          ..sort((a, b) => a.number.compareTo(b.number));
 
     if (adjacentEps.isEmpty) return;
 
@@ -204,6 +256,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   bool _hasChapter({required bool next}) {
+    if (widget.mode is ReaderModeOffline) return _adjacentLocal(next) != null;
     final episodesState = ref.read(episodesListProvider(_matchArgs)).value;
     if (episodesState == null) return false;
     final currentNum = widget.mode.episode.number;
@@ -224,6 +277,34 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   void _showChaptersSheet() {
+    if (widget.mode is ReaderModeOffline) {
+      AppBottomSheet.show(
+        context: context,
+        title: 'Downloaded chapters',
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .6,
+          child: ListView(
+            children: _localChapters()
+                .map(
+                  (task) => ListTile(
+                    selected:
+                        task.id == (widget.mode as ReaderModeOffline).task.id,
+                    title: Text(
+                      'Chapter ${task.episodeNumber} ${task.itemTitle}',
+                    ),
+                    subtitle: Text('${task.sourceName} · ${task.scanlator}'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openLocal(task, resume: true);
+                    },
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      );
+      return;
+    }
     final episodesState = ref.read(episodesListProvider(_matchArgs)).value;
     if (episodesState == null) return;
 
@@ -318,6 +399,39 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 opacity: state.showOverlay ? 1.0 : 0.0,
                 child: ReaderAppBar(
                   mediaTitle: widget.mode.media.title.getPreferedTitle,
+                  actions: state.localTask == null
+                      ? const []
+                      : [
+                          IconButton(
+                            tooltip: 'Bookmark page',
+                            onPressed: () => ref
+                                .read(readerProvider(widget.mode).notifier)
+                                .toggleBookmark(),
+                            icon: Icon(
+                              state.bookmarks.contains(state.currentPage)
+                                  ? Icons.bookmark
+                                  : Icons.bookmark_border,
+                              color: themeInfo.textColor,
+                            ),
+                          ),
+                          if (state.bookmarks.isNotEmpty)
+                            PopupMenuButton<int>(
+                              tooltip: 'Go to bookmark',
+                              icon: Icon(
+                                Icons.bookmarks_outlined,
+                                color: themeInfo.textColor,
+                              ),
+                              onSelected: (p) => _goToPage(p, prefs.direction),
+                              itemBuilder: (_) => state.bookmarks
+                                  .map(
+                                    (p) => PopupMenuItem(
+                                      value: p,
+                                      child: Text('Page ${p + 1}'),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                        ],
                   episodeNumber: widget.mode.episode.number,
                   themeInfo: themeInfo,
                   uiRoundness: GlobalUI.uiRoundness,
@@ -380,7 +494,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     ],
                   ),
                   child: Text(
-                    'Ch. ${widget.mode.episode.number} • ${state.currentPage + 1}/${state.totalPages}',
+                    '${widget.mode is ReaderModeOffline ? 'Offline · ' : ''}Ch. ${widget.mode.episode.number} • ${state.currentPage + 1}/${state.totalPages}',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,

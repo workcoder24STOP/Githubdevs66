@@ -1,3 +1,43 @@
+# Verification — ShonenZ+ 0.2.2, 2026-10-30
+
+## Current update
+
+- Full library analysis passed. Later changes to the download sheet and manager
+  passed a separate affected-file analysis; unchanged library results carry forward.
+- The 27-check focused suite passed: actual main ReaderScreen rendering of the
+  final saved Webtoon page, offline source isolation, local history/bookmarks,
+  missing-file errors, root reader routing, local anime resume/subtitle routing,
+  bounded manga concurrency/order/pause, stalled HLS segment pause, 1DM batch
+  preparation, incomplete/damaged import rejection, plus earlier image/transfer,
+  scanlator, catalog and matching contracts.
+- Two additional widget checks passed for choosing internal or 1DM manga downloads, with no automatic transfer before selection (29 checks), plus a storage-identity regression check (30 focused checks total).
+- The page-pool check observed concurrent requests and correct saved page order
+  after out-of-order completion. This establishes concurrency, not a promised
+  speed multiplier on arbitrary remote hosts.
+- A fresh real Kagane1.6.37/AnymeX2.7.3 search still returned `HTTP error 404`.
+  No live chapter transfer or fake compatibility result is claimed for it.
+- Anime extended playback/codec/battery/soak tests were outside the requested
+  manga-focused checks. Local engine fixtures are synthetic HTTP/image data;
+  source catalog fixtures and the live Kagane request use real source artifacts.
+
+## Remaining acceptance
+
+No responsive Android device is available in this sandbox. Its previous software
+emulators showed SystemUI ANRs and there is no hardware virtualization. This
+update's clean install/startup, actual installed 1DM handoff, SAF file-picker flow,
+background lifecycle and real video playback need device acceptance. 1DM link
+planning/import validation tests do not prove third-party app acceptance.
+
+Offline chapters use the application's normal reader implementation, with local
+chapter discovery and no source/network resolution. Import/export still uses
+explicit user-authorized files; 1DM private folders are not scanned. The original
+ShonenZ remains a separate application. The previous source/device results below
+are historical and do not establish acceptance of this update's Android binary.
+
+---
+
+## Historical 0.2.1 and earlier results
+
 # Update verification — 2026-10-30, version 0.2.1
 
 The update uses the same application ID and private signing key as 0.2.0.

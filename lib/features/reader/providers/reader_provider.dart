@@ -13,11 +13,14 @@ import 'package:shonenx/source_engine/models/chapter_page.dart';
 import 'package:shonenx/source_engine/source_engine_provider.dart';
 
 class ReaderState {
-  final ReaderModeOnline mode;
+  final ReaderMode mode;
   final AsyncValue<List<ChapterPage>> pages;
   final int currentPage;
   final int totalPages;
   final bool showOverlay;
+  final DownloadTask? localTask;
+  final List<DownloadTask> offlineChapters;
+  final List<int> bookmarks;
 
   const ReaderState({
     required this.mode,
@@ -25,14 +28,20 @@ class ReaderState {
     this.currentPage = 0,
     this.totalPages = 0,
     this.showOverlay = false,
+    this.localTask,
+    this.offlineChapters = const [],
+    this.bookmarks = const [],
   });
 
   ReaderState copyWith({
-    ReaderModeOnline? mode,
+    ReaderMode? mode,
     AsyncValue<List<ChapterPage>>? pages,
     int? currentPage,
     int? totalPages,
     bool? showOverlay,
+    DownloadTask? localTask,
+    List<DownloadTask>? offlineChapters,
+    List<int>? bookmarks,
   }) {
     return ReaderState(
       mode: mode ?? this.mode,
@@ -40,12 +49,15 @@ class ReaderState {
       currentPage: currentPage ?? this.currentPage,
       totalPages: totalPages ?? this.totalPages,
       showOverlay: showOverlay ?? this.showOverlay,
+      localTask: localTask ?? this.localTask,
+      offlineChapters: offlineChapters ?? this.offlineChapters,
+      bookmarks: bookmarks ?? this.bookmarks,
     );
   }
 }
 
 class ReaderNotifier extends Notifier<ReaderState> {
-  late final ReaderModeOnline arg;
+  late final ReaderMode arg;
 
   ReaderNotifier(this.arg);
 
@@ -65,20 +77,59 @@ class ReaderNotifier extends Notifier<ReaderState> {
     );
   }
 
-  Future<void> _fetchPages(ReaderModeOnline mode) async {
+  Future<void> _fetchPages(ReaderMode mode) async {
     state = state.copyWith(pages: const AsyncValue.loading());
     try {
-      final local = await ref.read(downloadRepositoryProvider).getByCatalogKey(
-        OfflineCatalog.itemKey(mode.media, mode.sourceInfo, mode.episode));
+      final repo = ref.read(downloadRepositoryProvider);
+      final local = mode is ReaderModeOffline
+          ? (await repo.getTaskById(mode.task.id) ?? mode.task)
+          : await repo.getByCatalogKey(
+              OfflineCatalog.itemKey(mode.media, mode.sourceInfo, mode.episode),
+            );
       final List<ChapterPage> pageList;
-      if (local != null && local.status == DownloadStatus.completed) {
+      var offlineChapters = <DownloadTask>[];
+      if (mode is ReaderModeOffline ||
+          local?.status == DownloadStatus.completed) {
+        if (local == null ||
+            !local.isManga ||
+            local.status != DownloadStatus.completed ||
+            local.localPages.isEmpty) {
+          throw StateError('This chapter has no completed downloaded pages.');
+        }
         pageList = local.localPages.map((p) => ChapterPage(url: p)).toList();
         for (final page in pageList) {
-          if (!await File(page.url).exists()) throw StateError('Downloaded page is missing. Download the chapter again.');
+          final file = File(page.url);
+          if (!await file.exists() || await file.length() == 0) {
+            throw StateError(
+              'Downloaded page is missing or empty. Import or download this chapter again.',
+            );
+          }
+        }
+        if (mode is ReaderModeOffline) {
+          offlineChapters =
+              (await repo.getAll())
+                  .where(
+                    (t) =>
+                        t.isManga &&
+                        t.status == DownloadStatus.completed &&
+                        (local.titleKey.isNotEmpty
+                            ? t.titleKey == local.titleKey
+                            : t.mediaId == local.mediaId &&
+                                  t.sourceId == local.sourceId),
+                  )
+                  .toList()
+                ..sort((a, b) {
+                  final season = a.season.compareTo(b.season);
+                  return season != 0
+                      ? season
+                      : a.episodeNumber.compareTo(b.episodeNumber);
+                });
         }
       } else {
         final source = ref.read(mangaSourceProvider(mode.sourceInfo));
-        pageList = await source.getPages(mode.episode.id).timeout(const Duration(seconds: 45));
+        pageList = await source
+            .getPages(mode.episode.id)
+            .timeout(const Duration(seconds: 45));
       }
       if (!ref.mounted) return;
 
@@ -102,6 +153,13 @@ class ReaderNotifier extends Notifier<ReaderState> {
       state = state.copyWith(
         pages: AsyncValue.data(pageList),
         totalPages: pageList.length,
+        localTask: local?.status == DownloadStatus.completed ? local : null,
+        offlineChapters: offlineChapters,
+        bookmarks:
+            local?.bookmarks
+                .where((p) => p >= 0 && p < pageList.length)
+                .toList() ??
+            [],
         currentPage: startPage,
       );
 
@@ -132,15 +190,34 @@ class ReaderNotifier extends Notifier<ReaderState> {
     _fetchPages(arg);
   }
 
-  void _saveHistory(int pageIndex, int total) {
-    if (total == 0) return;
-    if (ref.read(securityPrefsProvider).incognitoMode) return;
-    final savedPageNumber = pageIndex + 1;
-    final repository = ref.read(downloadRepositoryProvider);
-    repository.getByCatalogKey(OfflineCatalog.itemKey(arg.media, arg.sourceInfo, arg.episode)).then((task) {
-      if (task != null) repository.updateReading(task.id, pageIndex);
-    });
+  Future<void> toggleBookmark() async {
+    final task = state.localTask;
+    if (task == null) return;
+    final marks = List<int>.of(state.bookmarks);
+    marks.contains(state.currentPage)
+        ? marks.remove(state.currentPage)
+        : marks.add(state.currentPage);
+    marks.sort();
+    state = state.copyWith(bookmarks: marks);
+    await ref
+        .read(downloadRepositoryProvider)
+        .updateReading(task.id, state.currentPage, bookmarks: marks);
+  }
 
+  void _saveHistory(int pageIndex, int total) {
+    _persistHistory(pageIndex, total).catchError((Object _) {});
+  }
+
+  Future<void> _persistHistory(int pageIndex, int total) async {
+    if (total == 0) return;
+    final local = state.localTask;
+    if (local != null) {
+      await ref
+          .read(downloadRepositoryProvider)
+          .updateReading(local.id, pageIndex, bookmarks: state.bookmarks);
+    }
+    if (!ref.mounted || ref.read(securityPrefsProvider).incognitoMode) return;
+    final savedPageNumber = pageIndex + 1;
     final entry = HistoryEntry()
       ..mediaType = MediaType.MANGA.id
       ..itemNumber = arg.episode.number
@@ -159,7 +236,9 @@ class ReaderNotifier extends Notifier<ReaderState> {
           : null
       ..lastUpdated = DateTime.now();
 
-    ref.read(historyRepositoryProvider).saveProgress(entry);
+    await ref.read(historyRepositoryProvider).saveProgress(entry);
+    // Local reading must not start tracker/network requests while offline.
+    if (!ref.mounted || arg is ReaderModeOffline) return;
     ref
         .read(syncEngineProvider)
         .processReading(
@@ -172,7 +251,7 @@ class ReaderNotifier extends Notifier<ReaderState> {
 }
 
 final readerProvider = NotifierProvider.autoDispose
-    .family<ReaderNotifier, ReaderState, ReaderModeOnline>(
+    .family<ReaderNotifier, ReaderState, ReaderMode>(
       ReaderNotifier.new,
       name: 'readerProvider',
     );

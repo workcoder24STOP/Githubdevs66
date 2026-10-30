@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shonenx/features/downloads/presentation/downloads_screen.dart';
 import 'package:shonenx/features/downloads/providers/download_provider.dart';
 import 'package:shonenx/features/downloads/domain/models/download_task.dart';
-import 'package:shonenx/features/offline/offline_reader.dart';
+import 'package:shonenx/features/reader/domain/reader_mode.dart';
 import 'package:shonenx/features/player/domain/player_mode.dart';
 import 'package:shonenx/shared/providers/storage_provider.dart';
 import 'package:shonenx/shared/models/unified_media.dart';
@@ -28,39 +28,52 @@ void main() {
         ..isManga = true
         ..localPages = [fixture]
         ..status = DownloadStatus.completed;
+      ReaderModeOffline? opened;
+      final router = GoRouter(
+        routes: [
+          ShellRoute(
+            builder: (_, __, child) => Scaffold(
+              body: child,
+              bottomNavigationBar: const Text('Shell navigation'),
+            ),
+            routes: [
+              GoRoute(
+                path: '/',
+                builder: (_, __) => OfflineTitleScreen(
+                  titleKey: '',
+                  mediaId: 'manga-id',
+                  media: UnifiedMedia(id: 'manga-id', type: MediaType.MANGA),
+                ),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/reader',
+            builder: (_, state) {
+              opened = state.extra as ReaderModeOffline;
+              return const Scaffold(body: Text('App reader route'));
+            },
+          ),
+        ],
+      );
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
             downloadTasksProvider.overrideWith((ref) => Stream.value([task])),
           ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: Navigator(
-                onGenerateRoute: (_) => MaterialPageRoute<void>(
-                  builder: (_) => OfflineTitleScreen(
-                    titleKey: '',
-                    mediaId: 'manga-id',
-                    media: UnifiedMedia(id: 'manga-id', type: MediaType.MANGA),
-                  ),
-                ),
-              ),
-              bottomNavigationBar: const Text('Shell navigation'),
-            ),
-          ),
+          child: MaterialApp.router(routerConfig: router),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Chapter 4'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byType(OfflineReader), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('App reader route'), findsOneWidget);
       expect(find.text('Shell navigation'), findsNothing);
-      expect(
-        tester.widget<OfflineReader>(find.byType(OfflineReader)).task.id,
-        1,
-      );
+      expect(opened?.task.id, 1);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      router.dispose();
     },
   );
   testWidgets(

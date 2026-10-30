@@ -85,9 +85,13 @@ class OneDMService {
       },
     );
 
-    await intent.launch();
-
-    return true;
+    try {
+      await intent.launch();
+      return true;
+    } catch (_) {
+      _cachedPackage = null;
+      return false;
+    }
   }
 
   Future<bool> downloadBatch({
@@ -95,6 +99,9 @@ class OneDMService {
     required List<String> fileNames,
     Map<String, String>? headers,
   }) async {
+    if (urls.length != fileNames.length) {
+      throw ArgumentError('Each URL needs a filename.');
+    }
     if (!Platform.isAndroid || urls.isEmpty) {
       return false;
     }
@@ -121,9 +128,13 @@ class OneDMService {
       },
     );
 
-    await intent.launch();
-
-    return true;
+    try {
+      await intent.launch();
+      return true;
+    } catch (_) {
+      _cachedPackage = null;
+      return false;
+    }
   }
 
   Future<bool> isOneDMAvailable() async {
